@@ -51,7 +51,7 @@ internal class EnvoySnapshotFactory(
 
         val clusters = clustersFactory.getClustersForServices(clusterConfigurations, ads)
 
-        val endpoints: List<ClusterLoadAssignment> = createLoadAssignment(servicesStates)
+        val endpoints: List<ClusterLoadAssignment> = createLoadAssignment(routeSpecifications)
         val routes = listOf(
             egressRoutesFactory.createEgressRouteConfig("", routeSpecifications.values.flatten()),
             ingressRoutesFactory.createSecuredIngressRouteConfig(ProxySettings())
@@ -98,7 +98,8 @@ internal class EnvoySnapshotFactory(
                 toClusterRouteSpecification(
                     instances = instances.filter { it.tags.contains(tag) },
                     serviceName = serviceName,
-                    name = ResourceNames.edsClusterName(serviceName, tag)
+                    clusterName = ResourceNames.edsClusterName(serviceName, tag),
+                    tags = listOf(tag)
                 )
             }
 
@@ -111,7 +112,9 @@ internal class EnvoySnapshotFactory(
                     .map { (tag1, tag2) ->
                         toClusterRouteSpecification(
                             instances = instances.filter { it.tags.contains(tag1) && it.tags.contains(tag2) },
-                            serviceName = ResourceNames.edsClusterName(serviceName, tag1, tag2)
+                            serviceName = serviceName,
+                            clusterName = ResourceNames.edsClusterName(serviceName, tag1, tag2),
+                            tags = listOf(tag1, tag2)
                         )
                     }
             } else {
@@ -133,7 +136,12 @@ internal class EnvoySnapshotFactory(
         }
     }
 
-    private fun toClusterRouteSpecification(instances: List<ServiceInstance>, serviceName: String, name: String? = null): RouteSpecification {
+    private fun toClusterRouteSpecification(
+        instances: List<ServiceInstance>,
+        serviceName: String,
+        clusterName: String? = null,
+        tags: List<String> = emptyList()
+    ): RouteSpecification {
 
         // Http2 support is on a cluster level so if someone decides to deploy a service in dc1 with envoy and in dc2
         // without envoy then we can't set http2 because we do not know if the server in dc2 supports it.
@@ -143,7 +151,12 @@ internal class EnvoySnapshotFactory(
 
         val http2Enabled = properties.egress.http2.enabled && allInstancesHaveEnvoyTag()
 
-        return routeToEdsCluster(clusterName = name ?: serviceName, domain = serviceName, http2Enabled = http2Enabled)
+        return routeToEdsCluster(
+            clusterName = clusterName ?: serviceName,
+            domain = serviceName,
+            http2Enabled = http2Enabled,
+            tags = tags
+        )
     }
 
     fun getSnapshotForGroup(group: Group, globalSnapshot: SnapshotWithMetadata): Snapshot {
@@ -153,7 +166,7 @@ internal class EnvoySnapshotFactory(
         return newSnapshotForGroup(group, globalSnapshot)
     }
 
-    private fun getEgressRoutesSpecification(group: Group, globalSnapshot: Snapshot): Collection<RouteSpecification> {
+    private fun getEgressRoutesSpecification(group: Group, globalSnapshot: SnapshotWithMetadata): Collection<RouteSpecification> {
         return getServiceRouteSpecifications(group, globalSnapshot) +
             getDomainRouteSpecifications(group)
     }
@@ -168,28 +181,23 @@ internal class EnvoySnapshotFactory(
         }
     }
 
-    private fun getServiceRouteSpecifications(group: Group, globalSnapshot: Snapshot): Collection<RouteSpecification> {
+    private fun getServiceRouteSpecifications(group: Group, globalSnapshot: SnapshotWithMetadata): Collection<RouteSpecification> {
         return when (group) {
-            is ServicesGroup -> group.proxySettings.outgoing.getServiceDependencies().map {
-                RouteSpecification(
-                    clusterName = it.service,
-                    routeDomain = it.service,
-                    settings = it.settings
-                )
-            }
-            is AllServicesGroup -> globalSnapshot.clusters().resources().map {
-                RouteSpecification(
-                    clusterName = it.key,
-                    routeDomain = it.key,
-                    settings = defaultDependencySettings
-                )
-            }
+            is ServicesGroup -> group.proxySettings.outgoing.getServiceDependencies()
+                .mapNotNull { dependency ->
+                    globalSnapshot.routesByService[dependency.service]?.map { it.copy(settings = dependency.settings) }
+                }
+                .flatten()
+            is AllServicesGroup -> globalSnapshot.routesByService.values.flatten()
         }
     }
 
-    private fun getServicesEndpointsForGroup(group: Group, globalSnapshot: Snapshot): List<ClusterLoadAssignment> {
+    private fun getServicesEndpointsForGroup(group: Group, globalSnapshot: SnapshotWithMetadata): List<ClusterLoadAssignment> {
         return getServiceRouteSpecifications(group, globalSnapshot)
-            .mapNotNull { globalSnapshot.endpoints().resources().get(it.clusterName) }
+            .mapNotNull {
+                if (it.action is ClusterConfiguration) globalSnapshot.snapshot.endpoints().resources().get(it.action.name)
+                else null
+            }
     }
 
     private fun newSnapshotForGroup(
@@ -352,12 +360,18 @@ internal class EnvoySnapshotFactory(
             SecretsVersion.EMPTY_VERSION.value
         )
 
-    private fun routeToEdsCluster(clusterName: String, domain: String, http2Enabled: Boolean): RouteSpecification {
+    private fun routeToEdsCluster(
+        clusterName: String,
+        domain: String,
+        http2Enabled: Boolean,
+        tags: List<String> = emptyList()
+    ): RouteSpecification {
         return RouteSpecification(
             name = clusterName,
             routeDomain = domain,
             settings = defaultDependencySettings,
-            action = ClusterConfiguration(name = clusterName, http2Enabled = http2Enabled)
+            action = ClusterConfiguration(name = clusterName, http2Enabled = http2Enabled),
+            routeTag = tags.joinToString(",")
         )
     }
 

@@ -109,7 +109,7 @@ internal class EnvoyEgressRoutesFactory(
         when (val action = specification.action) {
             is ClusterConfiguration -> createClusterRoute(specification, action)
             is DirectResponseConfiguration -> createDirectResponseRoute(action)
-        }.let { /* force exhaustive compilation check */ }
+        }.let { /* force exhaustive check at compile time */ }
         return this
     }
 
