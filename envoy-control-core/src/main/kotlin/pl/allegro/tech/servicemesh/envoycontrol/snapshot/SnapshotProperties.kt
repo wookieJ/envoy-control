@@ -123,7 +123,7 @@ class AuthorizationProperties {
 
 class ServiceTagsProperties {
     var enabled = false
-    var metadataKey = "tag"
+    var queryParamName = "service-tag"
 }
 
 class RoutingProperties {

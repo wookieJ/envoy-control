@@ -70,7 +70,7 @@ internal class EnvoyEgressRoutesFactory(
                                 .apply {
                                     routeSpecification.routeTag?.let { tag ->
                                         val builder = QueryParameterMatcher.newBuilder()
-                                            .setName(tag)
+                                            .setName(properties.routing.serviceTags.queryParamName)
                                         if (!tag.isEmpty()) {
                                             builder.setStringMatch(StringMatcher.newBuilder()
                                                 .setExact(tag)
