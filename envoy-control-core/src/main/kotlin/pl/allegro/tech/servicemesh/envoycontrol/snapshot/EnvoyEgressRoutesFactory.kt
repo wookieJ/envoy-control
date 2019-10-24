@@ -2,13 +2,16 @@ package pl.allegro.tech.servicemesh.envoycontrol.snapshot
 
 import io.envoyproxy.controlplane.cache.TestResources
 import io.envoyproxy.envoy.api.v2.RouteConfiguration
+import io.envoyproxy.envoy.api.v2.core.DataSource
 import io.envoyproxy.envoy.api.v2.core.HeaderValue
 import io.envoyproxy.envoy.api.v2.core.HeaderValueOption
 import io.envoyproxy.envoy.api.v2.route.DirectResponseAction
+import io.envoyproxy.envoy.api.v2.route.QueryParameterMatcher
 import io.envoyproxy.envoy.api.v2.route.Route
 import io.envoyproxy.envoy.api.v2.route.RouteAction
 import io.envoyproxy.envoy.api.v2.route.RouteMatch
 import io.envoyproxy.envoy.api.v2.route.VirtualHost
+import io.envoyproxy.envoy.type.matcher.StringMatcher
 
 internal class EnvoyEgressRoutesFactory(
     private val properties: SnapshotProperties
@@ -57,17 +60,28 @@ internal class EnvoyEgressRoutesFactory(
     fun createEgressRouteConfig(serviceName: String, routes: Collection<RouteSpecification>): RouteConfiguration {
         val virtualHosts = routes.map { routeSpecification ->
             VirtualHost.newBuilder()
-                .setName(routeSpecification.clusterName)
+                .setName(routeSpecification.name)
                 .addDomains(routeSpecification.routeDomain)
                 .addRoutes(
                     Route.newBuilder()
                         .setMatch(
                             RouteMatch.newBuilder()
                                 .setPrefix("/")
+                                .apply {
+                                    routeSpecification.routeTag?.let { tag ->
+                                        val builder = QueryParameterMatcher.newBuilder()
+                                            .setName(tag)
+                                        if (!tag.isEmpty()) {
+                                            builder.setStringMatch(StringMatcher.newBuilder()
+                                                .setExact(tag)
+                                            )
+                                        }
+                                        addQueryParameters(builder)
+                                    }
+                                }
                         )
-                        .setRoute(
-                            createRouteAction(routeSpecification)
-                        )
+                        .configureAction(routeSpecification)
+
                 )
                 .build()
         }
@@ -91,14 +105,31 @@ internal class EnvoyEgressRoutesFactory(
             .build()
     }
 
-    private fun createRouteAction(routeSpecification: RouteSpecification): RouteAction.Builder {
-        val routeAction = RouteAction.newBuilder()
-            .setCluster(routeSpecification.clusterName)
+    private fun Route.Builder.configureAction(specification: RouteSpecification): Route.Builder {
+        when (val action = specification.action) {
+            is ClusterConfiguration -> createClusterRoute(specification, action)
+            is DirectResponseConfiguration -> createDirectResponseRoute(action)
+        }.let { /* force exhaustive compilation check */ }
+        return this
+    }
 
-        if (routeSpecification.settings.handleInternalRedirect) {
+    private fun Route.Builder.createClusterRoute(specification: RouteSpecification, cluster: ClusterConfiguration) {
+        val routeAction = RouteAction.newBuilder()
+            .setCluster(cluster.name)
+
+        if (specification.settings.handleInternalRedirect) {
             routeAction.setInternalRedirectAction(RouteAction.InternalRedirectAction.HANDLE_INTERNAL_REDIRECT)
         }
 
-        return routeAction
+        setRoute(routeAction)
+    }
+
+    private fun Route.Builder.createDirectResponseRoute(directResponse: DirectResponseConfiguration) {
+        setDirectResponse(DirectResponseAction.newBuilder()
+            .setStatus(directResponse.status)
+            .setBody(DataSource.newBuilder()
+                .setInlineString(directResponse.body)
+            )
+        )
     }
 }

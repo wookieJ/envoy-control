@@ -47,7 +47,7 @@ class SnapshotUpdater(
         cache.groups().forEach { group -> updateSnapshotForGroup(group, if (group.ads) adsSnapshot else snapshot) }
     }
 
-    private fun updateSnapshotForGroup(group: Group, snapshot: Snapshot) {
+    private fun updateSnapshotForGroup(group: Group, snapshot: SnapshotWithMetadata) {
         val groupSnapshot = snapshotFactory.getSnapshotForGroup(group, snapshot)
         cache.setSnapshot(group, groupSnapshot)
     }

@@ -29,17 +29,19 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.ServicesGroup
 internal class EnvoyClustersFactory(
     private val properties: SnapshotProperties
 ) {
-    fun getClustersForServices(services: List<EnvoySnapshotFactory.ClusterConfiguration>, ads: Boolean): List<Cluster> {
+    fun getClustersForServices(services: List<ClusterConfiguration>, ads: Boolean): List<Cluster> {
         return services.map { edsCluster(it, ads) }
     }
 
-    fun getClustersForGroup(group: Group, globalSnapshot: Snapshot): List<Cluster> =
-        getEdsClustersForGroup(group, globalSnapshot) + getStrictDnsClustersForGroup(group)
+    fun getClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<ClusterConfiguration>>): List<Cluster> =
+        getEdsClustersForGroup(group, globalSnapshot, configsByService) + getStrictDnsClustersForGroup(group)
 
-    private fun getEdsClustersForGroup(group: Group, globalSnapshot: Snapshot): List<Cluster> {
+    private fun getEdsClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<ClusterConfiguration>>): List<Cluster> {
         return when (group) {
-            is ServicesGroup -> group.proxySettings.outgoing.getServiceDependencies()
-                .mapNotNull { globalSnapshot.clusters().resources().get(it.service) }
+            is ServicesGroup -> group.proxySettings.outgoing.getServiceDependencies().flatMap {
+                configsByService[it.service].orEmpty()
+                    .mapNotNull { globalSnapshot.clusters().resources().get(it.name) }
+            }
             is AllServicesGroup -> globalSnapshot.clusters().resources().map { it.value }
         }
     }
@@ -98,14 +100,15 @@ internal class EnvoyClustersFactory(
         return clusterBuilder.build()
     }
 
-    private fun edsCluster(clusterConfiguration: EnvoySnapshotFactory.ClusterConfiguration, ads: Boolean): Cluster {
+
+    private fun edsCluster(clusterConfiguration: ClusterConfiguration, ads: Boolean): Cluster {
         val clusterBuilder = Cluster.newBuilder()
 
         if (properties.clusterOutlierDetection.enabled) {
             configureOutlierDetection(clusterBuilder)
         }
 
-        val cluster = clusterBuilder.setName(clusterConfiguration.serviceName)
+        val cluster = clusterBuilder.setName(clusterConfiguration.name)
             .setType(Cluster.DiscoveryType.EDS)
             .setConnectTimeout(Durations.fromMillis(properties.edsConnectionTimeout.toMillis()))
             .setEdsClusterConfig(
@@ -122,10 +125,10 @@ internal class EnvoyClustersFactory(
                             )
                         )
                     }
-                ).setServiceName(clusterConfiguration.serviceName)
+                ).setServiceName(clusterConfiguration.name)
             )
             .setLbPolicy(Cluster.LbPolicy.LEAST_REQUEST)
-            .configureLbSubsets()
+            .setCanarySubset()
 
         if (clusterConfiguration.http2Enabled) {
             cluster.setHttp2ProtocolOptions(Http2ProtocolOptions.getDefaultInstance())
@@ -134,46 +137,22 @@ internal class EnvoyClustersFactory(
         return cluster.build()
     }
 
-    private fun Cluster.Builder.configureLbSubsets(): Cluster.Builder {
-        val canaryEnabled = properties.loadBalancing.canary.enabled
-        val tagsEnabled = properties.routing.serviceTags.enabled
-
-        if (!canaryEnabled && !tagsEnabled) {
+    private fun Cluster.Builder.setCanarySubset(): Cluster.Builder {
+        if (!properties.loadBalancing.canary.enabled) {
             return this
         }
-
-        val defaultSubset = Struct.newBuilder()
-        if (canaryEnabled) {
-            defaultSubset.putFields(
-                properties.loadBalancing.regularMetadataKey,
-                Value.newBuilder().setBoolValue(true).build()
-            )
-        }
-
         return setLbSubsetConfig(Cluster.LbSubsetConfig.newBuilder()
             .setFallbackPolicy(Cluster.LbSubsetConfig.LbSubsetFallbackPolicy.DEFAULT_SUBSET)
-            .setDefaultSubset(defaultSubset)
-            .apply {
-                if (canaryEnabled) {
-                    addSubsetSelectors(Cluster.LbSubsetConfig.LbSubsetSelector.newBuilder()
-                        .addKeys(properties.loadBalancing.canary.metadataKey)
+            .setDefaultSubset(
+                Struct.newBuilder()
+                    .putFields(
+                        properties.loadBalancing.regularMetadataKey,
+                        Value.newBuilder().setBoolValue(true).build()
                     )
-                }
-                if (tagsEnabled) {
-                    addSubsetSelectors(Cluster.LbSubsetConfig.LbSubsetSelector.newBuilder()
-                        .addKeys(properties.routing.serviceTags.metadataKey)
-                        .setFallbackPolicy(Cluster.LbSubsetConfig.LbSubsetSelector.LbSubsetSelectorFallbackPolicy.NO_FALLBACK)
-                    )
-                    setListAsAny(true) // allowing for an endpoint to have multiple tags
-                }
-                if (tagsEnabled && canaryEnabled) {
-                    addSubsetSelectors(Cluster.LbSubsetConfig.LbSubsetSelector.newBuilder()
-                        .addKeys(properties.routing.serviceTags.metadataKey)
-                        .addKeys(properties.loadBalancing.canary.metadataKey)
-                        .setFallbackPolicy(Cluster.LbSubsetConfig.LbSubsetSelector.LbSubsetSelectorFallbackPolicy.NO_FALLBACK)
-                    )
-                }
-            }
+            )
+            .addSubsetSelectors(Cluster.LbSubsetConfig.LbSubsetSelector.newBuilder()
+                .addKeys(properties.loadBalancing.canary.metadataKey)
+            )
         )
     }
 

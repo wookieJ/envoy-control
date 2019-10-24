@@ -1,6 +1,5 @@
 package pl.allegro.tech.servicemesh.envoycontrol.snapshot
 
-import com.google.protobuf.ListValue
 import com.google.protobuf.Struct
 import com.google.protobuf.UInt32Value
 import com.google.protobuf.Value
@@ -37,38 +36,30 @@ internal class EnvoySnapshotFactory(
     private val defaultDependencySettings: DependencySettings =
         DependencySettings(properties.egress.handleInternalRedirect)
 ) {
-    fun newSnapshot(servicesStates: List<LocalityAwareServicesState>, ads: Boolean): Snapshot {
+    private val instanceWithTagNotFoundMsg = "There is no instance with specified service-tag"
+
+    fun newSnapshot(servicesStates: List<LocalityAwareServicesState>, ads: Boolean): SnapshotWithMetadata {
         val serviceNames = servicesStates.flatMap { it.servicesState.serviceNames() }.distinct()
 
-        val clusterConfigurations = if (properties.egress.http2.enabled) {
-            servicesStates.flatMap {
-                it.servicesState.serviceNameToInstances.values
-            }.groupBy {
-                it.serviceName
-            }.map { (serviceName, instances) ->
-                toClusterConfiguration(instances, serviceName)
-            }
-        } else {
-            serviceNames.map { ClusterConfiguration(serviceName = it, http2Enabled = false)}
-        }
+        val routeSpecifications = getRoutesSpecification(serviceNames, servicesStates)
+        val clusterConfigurations = routeSpecifications
+            .flatMap { it.value }
+            .mapNotNull { when (it.action) {
+                is ClusterConfiguration -> it.action
+                else -> null
+            } }
 
         val clusters = clustersFactory.getClustersForServices(clusterConfigurations, ads)
 
         val endpoints: List<ClusterLoadAssignment> = createLoadAssignment(servicesStates)
         val routes = listOf(
-            egressRoutesFactory.createEgressRouteConfig("", serviceNames.map {
-                RouteSpecification(
-                    clusterName = it,
-                    routeDomain = it,
-                    settings = defaultDependencySettings
-                )
-            }),
+            egressRoutesFactory.createEgressRouteConfig("", routeSpecifications.values.flatten()),
             ingressRoutesFactory.createSecuredIngressRouteConfig(ProxySettings())
         )
 
         val version = snapshotsVersions.version(AllServicesGroup(ads), clusters, endpoints)
 
-        return createSnapshot(
+        val snapshot = createSnapshot(
             clusters = clusters,
             clustersVersion = version.clusters,
             endpoints = endpoints,
@@ -76,25 +67,88 @@ internal class EnvoySnapshotFactory(
             routes = routes,
             routesVersion = RoutesVersion(version.clusters.value)
         )
+        return SnapshotWithMetadata(snapshot, routeSpecifications)
     }
 
-    private fun toClusterConfiguration(instances: List<ServiceInstances>, serviceName: String): ClusterConfiguration {
-        val allInstances = instances.flatMap {
-            it.instances
+    private fun getRoutesSpecification(
+        serviceNames: List<String>,
+        servicesStates: List<LocalityAwareServicesState>
+    ): Map<String, List<RouteSpecification>> {
+
+        return if (!properties.egress.http2.enabled && !properties.routing.serviceTags.enabled) {
+            serviceNames.associateWith { listOf(routeToEdsCluster(clusterName = it, domain = it, http2Enabled = false)) }
+        } else {
+            servicesStates.flatMap {
+                it.servicesState.serviceNameToInstances.values
+            }.groupBy {
+                it.serviceName
+            }.mapValues { (serviceName, instances) ->
+                toRoutesSpecification(instances.flatMap { it.instances }, serviceName)
+            }
         }
+    }
+
+    private fun toRoutesSpecification(instances: List<ServiceInstance>, serviceName: String): List<RouteSpecification> {
+        val defaultRoute = toClusterRouteSpecification(instances = instances, serviceName = serviceName)
+        if (properties.routing.serviceTags.enabled) {
+            val allTags = instances.flatMap { it.tags }.toSet()
+            val routingTags = serviceTagFilter.filterTagsForRouting(allTags)
+
+            val oneTagClusters = routingTags.map { tag ->
+                toClusterRouteSpecification(
+                    instances = instances.filter { it.tags.contains(tag) },
+                    serviceName = serviceName,
+                    name = ResourceNames.edsClusterName(serviceName, tag)
+                )
+            }
+
+            val twoTagsClusters = if (serviceTagFilter.isAllowedToMatchOnTwoTags(serviceName)) {
+                routingTags
+                    .flatMap { tag1 -> routingTags
+                        .filter { it > tag1 }
+                        .map { tag2 -> Pair(tag1, tag2) }
+                    }
+                    .map { (tag1, tag2) ->
+                        toClusterRouteSpecification(
+                            instances = instances.filter { it.tags.contains(tag1) && it.tags.contains(tag2) },
+                            serviceName = ResourceNames.edsClusterName(serviceName, tag1, tag2)
+                        )
+                    }
+            } else {
+                emptyList()
+            }
+
+            val tagNotFoundRoute = routeDirectResponse(
+                name = ResourceNames.tagsNotFoundRouteName(serviceName),
+                domain = serviceName,
+                body = instanceWithTagNotFoundMsg,
+                status = 503,
+                matchOnlyOnAnyTag = true
+            )
+
+            return twoTagsClusters + oneTagClusters + tagNotFoundRoute + defaultRoute
+
+        } else {
+            return listOf(defaultRoute)
+        }
+    }
+
+    private fun toClusterRouteSpecification(instances: List<ServiceInstance>, serviceName: String, name: String? = null): RouteSpecification {
 
         // Http2 support is on a cluster level so if someone decides to deploy a service in dc1 with envoy and in dc2
         // without envoy then we can't set http2 because we do not know if the server in dc2 supports it.
-        val allInstancesHaveEnvoyTag = allInstances.isNotEmpty() && allInstances.all {
+        val allInstancesHaveEnvoyTag = { instances.isNotEmpty() && instances.all {
             it.tags.contains(properties.egress.http2.tagName)
-        }
+        }}
 
-        return ClusterConfiguration(serviceName, allInstancesHaveEnvoyTag)
+        val http2Enabled = properties.egress.http2.enabled && allInstancesHaveEnvoyTag()
+
+        return routeToEdsCluster(clusterName = name ?: serviceName, domain = serviceName, http2Enabled = http2Enabled)
     }
 
-    fun getSnapshotForGroup(group: Group, globalSnapshot: Snapshot): Snapshot {
+    fun getSnapshotForGroup(group: Group, globalSnapshot: SnapshotWithMetadata): Snapshot {
         if (group.isGlobalGroup()) {
-            return globalSnapshot
+            return globalSnapshot.snapshot
         }
         return newSnapshotForGroup(group, globalSnapshot)
     }
@@ -140,11 +194,16 @@ internal class EnvoySnapshotFactory(
 
     private fun newSnapshotForGroup(
         group: Group,
-        globalSnapshot: Snapshot
+        globalSnapshot: SnapshotWithMetadata
     ): Snapshot {
 
+        val clusterConfigsByService = globalSnapshot.routesByService
+            .mapValues { it.value
+                .mapNotNull { if (it.action is ClusterConfiguration) it.action else null }
+            }
+
         val clusters: List<Cluster> =
-            clustersFactory.getClustersForGroup(group, globalSnapshot)
+            clustersFactory.getClustersForGroup(group, globalSnapshot.snapshot, clusterConfigsByService)
 
         val routes = listOf(
             egressRoutesFactory.createEgressRouteConfig(
@@ -237,20 +296,6 @@ internal class EnvoySnapshotFactory(
         return setMetadata(Metadata.newBuilder().putFilterMetadata("envoy.lb", metadataKeys.build()))
     }
 
-    private fun addServiceTagsToMetadata(metadata: Struct.Builder, instance: ServiceInstance) {
-        val filteredTags = serviceTagFilter.filterTagsForRouting(instance.tags)
-        if (filteredTags.isEmpty()) {
-            return
-        }
-        metadata.putFields(
-            properties.routing.serviceTags.metadataKey,
-            Value.newBuilder()
-                .setListValue(ListValue.newBuilder()
-                    .addAllValues(filteredTags.map { Value.newBuilder().setStringValue(it).build() })
-                ).build()
-        )
-    }
-
     private fun LbEndpoint.Builder.setLoadBalancingWeightFromInstance(instance: ServiceInstance): LbEndpoint.Builder =
         when (properties.loadBalancing.weights.enabled) {
             true -> setLoadBalancingWeight(UInt32Value.of(instance.weight))
@@ -307,11 +352,52 @@ internal class EnvoySnapshotFactory(
             SecretsVersion.EMPTY_VERSION.value
         )
 
-    internal data class ClusterConfiguration(val serviceName: String, val http2Enabled: Boolean)
+    private fun routeToEdsCluster(clusterName: String, domain: String, http2Enabled: Boolean): RouteSpecification {
+        return RouteSpecification(
+            name = clusterName,
+            routeDomain = domain,
+            settings = defaultDependencySettings,
+            action = ClusterConfiguration(name = clusterName, http2Enabled = http2Enabled)
+        )
+    }
+
+    private fun routeDirectResponse(name: String, domain: String, body: String, status: Int, matchOnlyOnAnyTag: Boolean = false): RouteSpecification {
+        return RouteSpecification(
+            name = name,
+            routeDomain = domain,
+            routeTag = if (matchOnlyOnAnyTag) "" else null,
+            settings = DependencySettings(),
+            action = DirectResponseConfiguration(body, status)
+        )
+    }
 }
 
-class RouteSpecification(
-    val clusterName: String,
+object ResourceNames {
+    fun edsClusterName(serviceName: String, vararg tags: String): String {
+        return if (tags.isEmpty()) {
+            serviceName
+        } else {
+            serviceName + tags.joinToString(separator = "][", prefix = "[", postfix = "]")
+        }
+    }
+
+    fun tagsNotFoundRouteName(serviceName: String): String {
+        return "${serviceName}_tag_not_found"
+    }
+}
+
+sealed class RouteActionConfiguration
+
+internal data class DirectResponseConfiguration(val body: String, val status: Int): RouteActionConfiguration()
+
+internal data class ClusterConfiguration(val name: String, val http2Enabled: Boolean): RouteActionConfiguration()
+
+internal data class RouteSpecification(
+    val name: String,
     val routeDomain: String,
-    val settings: DependencySettings
+    val settings: DependencySettings,
+    val action: RouteActionConfiguration,
+    val routeTag: String? = null
 )
+
+
