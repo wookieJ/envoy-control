@@ -23,7 +23,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.ProxySettings
 import pl.allegro.tech.servicemesh.envoycontrol.groups.ServicesGroup
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
-import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.Locality as LocalityEnum
 
 internal class EnvoySnapshotFactory(
@@ -41,19 +40,19 @@ internal class EnvoySnapshotFactory(
     fun newSnapshot(servicesStates: List<LocalityAwareServicesState>, ads: Boolean): SnapshotWithMetadata {
         val serviceNames = servicesStates.flatMap { it.servicesState.serviceNames() }.distinct()
 
-        val routeSpecifications = getRoutesSpecification(serviceNames, servicesStates)
-        val clusterConfigurations = routeSpecifications
+        val routesSpecifications = getRoutesSpecification(serviceNames, servicesStates)
+        val clusterConfigurations = routesSpecifications
             .flatMap { it.value }
             .mapNotNull { when (it.action) {
-                is ClusterConfiguration -> it.action
+                is EdsClusterAction -> it.action
                 else -> null
             } }
 
         val clusters = clustersFactory.getClustersForServices(clusterConfigurations, ads)
 
-        val endpoints: List<ClusterLoadAssignment> = createLoadAssignment(routeSpecifications)
+        val endpoints: List<ClusterLoadAssignment> = createLoadAssignment(servicesStates, routesSpecifications)
         val routes = listOf(
-            egressRoutesFactory.createEgressRouteConfig("", routeSpecifications.values.flatten()),
+            egressRoutesFactory.createEgressRouteConfig("", routesSpecifications.values.flatten()),
             ingressRoutesFactory.createSecuredIngressRouteConfig(ProxySettings())
         )
 
@@ -67,43 +66,60 @@ internal class EnvoySnapshotFactory(
             routes = routes,
             routesVersion = RoutesVersion(version.clusters.value)
         )
-        return SnapshotWithMetadata(snapshot, routeSpecifications)
+        return SnapshotWithMetadata(snapshot, routesSpecifications)
     }
 
     private fun getRoutesSpecification(
         serviceNames: List<String>,
         servicesStates: List<LocalityAwareServicesState>
-    ): Map<String, List<RouteSpecification>> {
+    ): RoutesByServiceName {
 
+        val instancesByService = toInstancesByService(servicesStates)
+        
         return if (!properties.egress.http2.enabled && !properties.routing.serviceTags.enabled) {
-            serviceNames.associateWith { listOf(routeToEdsCluster(clusterName = it, domain = it, http2Enabled = false)) }
+            serviceNames.associateWith { listOf(
+                routeToEdsCluster(
+                    clusterName = it, 
+                    domain = it, 
+                    http2Enabled = false, 
+                    instances = instancesByService[it].orEmpty()
+                )) }
         } else {
-            servicesStates.flatMap {
-                it.servicesState.serviceNameToInstances.values
-            }.groupBy {
-                it.serviceName
-            }.mapValues { (serviceName, instances) ->
-                toRoutesSpecification(instances.flatMap { it.instances }, serviceName)
-            }
+            instancesByService
+                .mapValues { (serviceName, instances) -> toRoutesSpecification(instances, serviceName) }
         }
     }
+    
+    private fun toInstancesByService(servicesStates: List<LocalityAwareServicesState>): Map<String, List<InstanceWithMetadata>> {
+        return servicesStates
+            .flatMap { stateWithLocality ->
+                stateWithLocality.servicesState.serviceNameToInstances.values
+                    .map { (serviceName, instances) ->
+                        val instancesWithLocality = instances
+                            .map { InstanceWithMetadata(it, stateWithLocality.locality, stateWithLocality.zone) }
+                        serviceName to instancesWithLocality
+                    }
+            }
+            .groupBy({ (serviceName) -> serviceName }, { it.second })
+            .mapValues { (_, instances) -> instances.flatten() }
+    }
 
-    private fun toRoutesSpecification(instances: List<ServiceInstance>, serviceName: String): List<RouteSpecification> {
+    private fun toRoutesSpecification(instances: List<InstanceWithMetadata>, serviceName: String): List<RouteSpecification> {
         val defaultRoute = toClusterRouteSpecification(instances = instances, serviceName = serviceName)
         if (properties.routing.serviceTags.enabled) {
-            val allTags = instances.flatMap { it.tags }.toSet()
+            val allTags = instances.flatMap { it.instance.tags }.toSet()
             val routingTags = serviceTagFilter.filterTagsForRouting(allTags)
 
-            val oneTagClusters = routingTags.map { tag ->
+            val oneTagRoutes = routingTags.map { tag ->
                 toClusterRouteSpecification(
-                    instances = instances.filter { it.tags.contains(tag) },
+                    instances = instances.filter { it.instance.tags.contains(tag) },
                     serviceName = serviceName,
                     clusterName = ResourceNames.edsClusterName(serviceName, tag),
                     tags = listOf(tag)
                 )
             }
 
-            val twoTagsClusters = if (serviceTagFilter.isAllowedToMatchOnTwoTags(serviceName)) {
+            val twoTagsRoutes = if (serviceTagFilter.isAllowedToMatchOnTwoTags(serviceName)) {
                 routingTags
                     .flatMap { tag1 -> routingTags
                         .filter { it > tag1 }
@@ -111,7 +127,7 @@ internal class EnvoySnapshotFactory(
                     }
                     .map { (tag1, tag2) ->
                         toClusterRouteSpecification(
-                            instances = instances.filter { it.tags.contains(tag1) && it.tags.contains(tag2) },
+                            instances = instances.filter { it.instance.tags.contains(tag1) && it.instance.tags.contains(tag2) },
                             serviceName = serviceName,
                             clusterName = ResourceNames.edsClusterName(serviceName, tag1, tag2),
                             tags = listOf(tag1, tag2)
@@ -129,7 +145,7 @@ internal class EnvoySnapshotFactory(
                 matchOnlyOnAnyTag = true
             )
 
-            return twoTagsClusters + oneTagClusters + tagNotFoundRoute + defaultRoute
+            return twoTagsRoutes + oneTagRoutes + tagNotFoundRoute + defaultRoute
 
         } else {
             return listOf(defaultRoute)
@@ -137,25 +153,26 @@ internal class EnvoySnapshotFactory(
     }
 
     private fun toClusterRouteSpecification(
-        instances: List<ServiceInstance>,
+        instances: List<InstanceWithMetadata>,
         serviceName: String,
-        clusterName: String? = null,
+        clusterName: String = serviceName,
         tags: List<String> = emptyList()
     ): RouteSpecification {
 
         // Http2 support is on a cluster level so if someone decides to deploy a service in dc1 with envoy and in dc2
         // without envoy then we can't set http2 because we do not know if the server in dc2 supports it.
         val allInstancesHaveEnvoyTag = { instances.isNotEmpty() && instances.all {
-            it.tags.contains(properties.egress.http2.tagName)
+            it.instance.tags.contains(properties.egress.http2.tagName)
         }}
 
         val http2Enabled = properties.egress.http2.enabled && allInstancesHaveEnvoyTag()
 
         return routeToEdsCluster(
-            clusterName = clusterName ?: serviceName,
+            clusterName = clusterName,
             domain = serviceName,
             http2Enabled = http2Enabled,
-            tags = tags
+            tags = tags,
+            instances = instances
         )
     }
 
@@ -173,9 +190,9 @@ internal class EnvoySnapshotFactory(
 
     private fun getDomainRouteSpecifications(group: Group): List<RouteSpecification> {
         return group.proxySettings.outgoing.getDomainDependencies().map {
-            RouteSpecification(
+            routeToDomainCluster(
                 clusterName = it.getClusterName(),
-                routeDomain = it.getRouteDomain(),
+                domain = it.getRouteDomain(),
                 settings = it.settings
             )
         }
@@ -195,7 +212,7 @@ internal class EnvoySnapshotFactory(
     private fun getServicesEndpointsForGroup(group: Group, globalSnapshot: SnapshotWithMetadata): List<ClusterLoadAssignment> {
         return getServiceRouteSpecifications(group, globalSnapshot)
             .mapNotNull {
-                if (it.action is ClusterConfiguration) globalSnapshot.snapshot.endpoints().resources().get(it.action.name)
+                if (it.action is EdsClusterAction) globalSnapshot.snapshot.endpoints().resources().get(it.action.name)
                 else null
             }
     }
@@ -207,7 +224,7 @@ internal class EnvoySnapshotFactory(
 
         val clusterConfigsByService = globalSnapshot.routesByService
             .mapValues { it.value
-                .mapNotNull { if (it.action is ClusterConfiguration) it.action else null }
+                .mapNotNull { if (it.action is EdsClusterAction) it.action else null }
             }
 
         val clusters: List<Cluster> =
@@ -240,13 +257,13 @@ internal class EnvoySnapshotFactory(
     }
 
     private fun createEndpointsGroup(
-        serviceInstances: ServiceInstances,
+        serviceInstances: List<InstanceWithMetadata>,
         zone: String,
         priority: Int
     ): LocalityLbEndpoints =
         LocalityLbEndpoints.newBuilder()
             .setLocality(Locality.newBuilder().setZone(zone).build())
-            .addAllLbEndpoints(serviceInstances.instances.map { createLbEndpoint(it) })
+            .addAllLbEndpoints(serviceInstances.map { createLbEndpoint(it.instance) })
             .setPriority(priority)
             .build()
 
@@ -297,10 +314,6 @@ internal class EnvoySnapshotFactory(
             )
         }
 
-        if (properties.routing.serviceTags.enabled) {
-            addServiceTagsToMetadata(metadataKeys, instance)
-        }
-
         return setMetadata(Metadata.newBuilder().putFilterMetadata("envoy.lb", metadataKeys.build()))
     }
 
@@ -311,34 +324,40 @@ internal class EnvoySnapshotFactory(
         }
 
     private fun toEnvoyPriority(locality: LocalityEnum): Int = if (locality == LocalityEnum.LOCAL) 0 else 1
-
+    
+    
     private fun createLoadAssignment(
-        localityAwareServicesStates: List<LocalityAwareServicesState>
+        localityAwareServicesStates: List<LocalityAwareServicesState>,
+        routesSpecifications: RoutesByServiceName
     ): List<ClusterLoadAssignment> {
         return localityAwareServicesStates
             .flatMap {
                 val locality = it.locality
                 val zone = it.zone
 
-                it.servicesState.serviceNameToInstances.map { (serviceName, serviceInstances) ->
-                    serviceName to createEndpointsGroup(serviceInstances, zone, toEnvoyPriority(locality))
+                routesSpecifications.flatMap { (_, routes) -> routes
+                    .mapNotNull { when (it.action) {
+                        is EdsClusterAction -> it.action
+                        else -> null
+                    }}
+                    .map {
+                        it.name to createEndpointsGroup(
+                            serviceInstances = it.instances.filterByLocality(locality, zone),
+                            zone = zone,
+                            priority = toEnvoyPriority(locality)
+                        )
+                    }
                 }
             }
-            .groupBy { (serviceName) ->
-                serviceName
-            }
-            .map { (serviceName, serviceNameLocalityLbEndpointsPairs) ->
-                val localityLbEndpoints = serviceNameLocalityLbEndpointsPairs.map { (_, localityLbEndpoint) ->
-                    localityLbEndpoint
-                }
-
+            .groupBy ({ (clusterName) -> clusterName }, { (_, endpointGroups) -> endpointGroups })
+            .map { (clusterName, endpointsGroups) ->
                 ClusterLoadAssignment.newBuilder()
-                    .setClusterName(serviceName)
-                    .addAllEndpoints(localityLbEndpoints)
+                    .setClusterName(clusterName)
+                    .addAllEndpoints(endpointsGroups)
                     .build()
             }
     }
-
+    
     private fun createSnapshot(
         clusters: List<Cluster> = emptyList(),
         clustersVersion: ClustersVersion = ClustersVersion.EMPTY_VERSION,
@@ -364,14 +383,28 @@ internal class EnvoySnapshotFactory(
         clusterName: String,
         domain: String,
         http2Enabled: Boolean,
+        instances: List<InstanceWithMetadata>,
         tags: List<String> = emptyList()
     ): RouteSpecification {
         return RouteSpecification(
             name = clusterName,
             routeDomain = domain,
             settings = defaultDependencySettings,
-            action = ClusterConfiguration(name = clusterName, http2Enabled = http2Enabled),
+            action = EdsClusterAction(name = clusterName, http2Enabled = http2Enabled, instances = instances),
             routeTag = tags.joinToString(",")
+        )
+    }
+    
+    private fun routeToDomainCluster(
+        clusterName: String,
+        domain: String,
+        settings: DependencySettings
+    ): RouteSpecification {
+        return RouteSpecification(
+            name = clusterName,
+            routeDomain = domain,
+            settings = settings,
+            action = StrictDnsClusterAction(name = clusterName, http2Enabled = false)
         )
     }
 
@@ -381,7 +414,7 @@ internal class EnvoySnapshotFactory(
             routeDomain = domain,
             routeTag = if (matchOnlyOnAnyTag) "" else null,
             settings = DependencySettings(),
-            action = DirectResponseConfiguration(body, status)
+            action = DirectRespAction(body, status)
         )
     }
 }
@@ -400,18 +433,32 @@ object ResourceNames {
     }
 }
 
-sealed class RouteActionConfiguration
+sealed class RouteAction
 
-internal data class DirectResponseConfiguration(val body: String, val status: Int): RouteActionConfiguration()
+internal data class DirectRespAction(val body: String, val status: Int): RouteAction()
+internal sealed class ClusterAction : RouteAction() {
+    abstract val name: String
+    abstract val http2Enabled: Boolean
+}
+internal data class EdsClusterAction(
+    override val name: String,
+    override val http2Enabled: Boolean,
+    val instances: List<InstanceWithMetadata>
+): ClusterAction()
 
-internal data class ClusterConfiguration(val name: String, val http2Enabled: Boolean): RouteActionConfiguration()
+internal data class StrictDnsClusterAction(
+    override val name: String,
+    override val http2Enabled: Boolean
+) : ClusterAction()
 
 internal data class RouteSpecification(
     val name: String,
     val routeDomain: String,
     val settings: DependencySettings,
-    val action: RouteActionConfiguration,
+    val action: RouteAction,
     val routeTag: String? = null
 )
+
+internal typealias RoutesByServiceName = Map<String, List<RouteSpecification>>
 
 

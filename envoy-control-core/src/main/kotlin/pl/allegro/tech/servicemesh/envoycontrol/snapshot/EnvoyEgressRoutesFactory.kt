@@ -107,13 +107,13 @@ internal class EnvoyEgressRoutesFactory(
 
     private fun Route.Builder.configureAction(specification: RouteSpecification): Route.Builder {
         when (val action = specification.action) {
-            is ClusterConfiguration -> createClusterRoute(specification, action)
-            is DirectResponseConfiguration -> createDirectResponseRoute(action)
+            is ClusterAction -> createClusterRoute(specification, action)
+            is DirectRespAction -> createDirectResponseRoute(action)
         }.let { /* force exhaustive check at compile time */ }
         return this
     }
 
-    private fun Route.Builder.createClusterRoute(specification: RouteSpecification, cluster: ClusterConfiguration) {
+    private fun Route.Builder.createClusterRoute(specification: RouteSpecification, cluster: ClusterAction) {
         val routeAction = RouteAction.newBuilder()
             .setCluster(cluster.name)
 
@@ -124,7 +124,7 @@ internal class EnvoyEgressRoutesFactory(
         setRoute(routeAction)
     }
 
-    private fun Route.Builder.createDirectResponseRoute(directResponse: DirectResponseConfiguration) {
+    private fun Route.Builder.createDirectResponseRoute(directResponse: DirectRespAction) {
         setDirectResponse(DirectResponseAction.newBuilder()
             .setStatus(directResponse.status)
             .setBody(DataSource.newBuilder()

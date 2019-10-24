@@ -29,14 +29,14 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.ServicesGroup
 internal class EnvoyClustersFactory(
     private val properties: SnapshotProperties
 ) {
-    fun getClustersForServices(services: List<ClusterConfiguration>, ads: Boolean): List<Cluster> {
+    fun getClustersForServices(services: List<EdsClusterAction>, ads: Boolean): List<Cluster> {
         return services.map { edsCluster(it, ads) }
     }
 
-    fun getClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<ClusterConfiguration>>): List<Cluster> =
+    fun getClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<EdsClusterAction>>): List<Cluster> =
         getEdsClustersForGroup(group, globalSnapshot, configsByService) + getStrictDnsClustersForGroup(group)
 
-    private fun getEdsClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<ClusterConfiguration>>): List<Cluster> {
+    private fun getEdsClustersForGroup(group: Group, globalSnapshot: Snapshot, configsByService: Map<String, List<EdsClusterAction>>): List<Cluster> {
         return when (group) {
             is ServicesGroup -> group.proxySettings.outgoing.getServiceDependencies().flatMap {
                 configsByService[it.service].orEmpty()
@@ -101,7 +101,7 @@ internal class EnvoyClustersFactory(
     }
 
 
-    private fun edsCluster(clusterConfiguration: ClusterConfiguration, ads: Boolean): Cluster {
+    private fun edsCluster(clusterConfiguration: EdsClusterAction, ads: Boolean): Cluster {
         val clusterBuilder = Cluster.newBuilder()
 
         if (properties.clusterOutlierDetection.enabled) {
