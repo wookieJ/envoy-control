@@ -154,7 +154,8 @@ class ControlPlane private constructor(
                     properties.envoy.snapshot,
                     Schedulers.fromExecutor(updateSnapshotExecutor!!),
                     groupChangeWatcher.onGroupAdded(),
-                    serviceTagFilter = serviceTagFilter
+                    meterRegistry,
+                    serviceTagFilter
                 ),
                 changes
             )
