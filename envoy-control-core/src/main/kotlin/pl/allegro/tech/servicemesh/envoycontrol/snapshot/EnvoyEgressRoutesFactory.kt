@@ -11,7 +11,6 @@ import io.envoyproxy.envoy.api.v2.route.Route
 import io.envoyproxy.envoy.api.v2.route.RouteAction
 import io.envoyproxy.envoy.api.v2.route.RouteMatch
 import io.envoyproxy.envoy.api.v2.route.VirtualHost
-import io.envoyproxy.envoy.type.matcher.StringMatcher
 
 internal class EnvoyEgressRoutesFactory(
     private val properties: SnapshotProperties
@@ -75,9 +74,7 @@ internal class EnvoyEgressRoutesFactory(
                                             val builder = QueryParameterMatcher.newBuilder()
                                                 .setName(properties.routing.serviceTags.queryParamName)
                                             if (!tag.isEmpty()) {
-                                                builder.setStringMatch(StringMatcher.newBuilder()
-                                                    .setExact(tag)
-                                                )
+                                                builder.setValue(tag) // TODO: change to setStringMatch when envoy v1.11.2 will be minimum supported version
                                             }
                                             addQueryParameters(builder)
                                         }

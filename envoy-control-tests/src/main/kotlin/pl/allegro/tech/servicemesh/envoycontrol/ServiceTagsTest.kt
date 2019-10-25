@@ -12,7 +12,7 @@ open class ServiceTagsTest : EnvoyControlTestConfiguration() {
     companion object {
         private val properties = mapOf(
             "envoy-control.envoy.snapshot.routing.service-tags.enabled" to true,
-            "envoy-control.envoy.snapshot.routing.service-tags.metadata-key" to "tag"
+            "envoy-control.envoy.snapshot.routing.service-tags.queryParamName" to "service-tag"
         )
 
         @JvmStatic
@@ -120,15 +120,15 @@ open class ServiceTagsTest : EnvoyControlTestConfiguration() {
         assertThat(stats.loremIpsumHits).isEqualTo(0)
     }
 
-    open protected fun callEchoServiceRepeatedly(repeat: Int, tag: String? = null, assertNoErrors: Boolean = true): CallStats {
+    protected fun callEchoServiceRepeatedly(repeat: Int, tag: String? = null, assertNoErrors: Boolean = true): CallStats {
         val stats = CallStats()
         callServiceRepeatedly(
             service = "echo",
             stats = stats,
             minRepeat = repeat,
             maxRepeat = repeat,
-            headers = tag?.let { mapOf("service-tag" to it) } ?: emptyMap(),
-            assertNoErrors = assertNoErrors
+            assertNoErrors = assertNoErrors,
+            pathAndQuery = tag?.let { "?service-tag=$it" } ?: ""
         )
         return stats
     }
