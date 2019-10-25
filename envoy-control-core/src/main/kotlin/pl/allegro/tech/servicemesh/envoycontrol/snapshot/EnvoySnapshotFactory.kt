@@ -391,7 +391,7 @@ internal class EnvoySnapshotFactory(
             routeDomain = domain,
             settings = defaultDependencySettings,
             action = EdsClusterAction(name = clusterName, http2Enabled = http2Enabled, instances = instances),
-            routeTag = tags.joinToString(",")
+            routeTag = tags.joinToString(",").ifEmpty { null }
         )
     }
     
@@ -442,13 +442,13 @@ internal sealed class ClusterAction : RouteAction() {
 }
 internal data class EdsClusterAction(
     override val name: String,
-    override val http2Enabled: Boolean,
+    override val http2Enabled: Boolean = false,
     val instances: List<InstanceWithMetadata>
 ): ClusterAction()
 
 internal data class StrictDnsClusterAction(
     override val name: String,
-    override val http2Enabled: Boolean
+    override val http2Enabled: Boolean = false
 ) : ClusterAction()
 
 internal data class RouteSpecification(

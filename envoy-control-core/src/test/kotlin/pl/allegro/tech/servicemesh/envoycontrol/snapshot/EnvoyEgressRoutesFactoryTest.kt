@@ -9,7 +9,8 @@ internal class EnvoyEgressRoutesFactoryTest {
 
     val clusters = listOf(
         RouteSpecification(
-            clusterName = "srv1",
+            name = "srv1",
+            action = StrictDnsClusterAction(name = "srv1"),
             routeDomain = "srv1",
             settings = DependencySettings(handleInternalRedirect = true)
         )

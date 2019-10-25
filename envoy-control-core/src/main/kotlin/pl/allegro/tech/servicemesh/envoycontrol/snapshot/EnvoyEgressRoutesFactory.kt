@@ -58,30 +58,34 @@ internal class EnvoyEgressRoutesFactory(
      * @see TestResources.createRoute
      */
     fun createEgressRouteConfig(serviceName: String, routes: Collection<RouteSpecification>): RouteConfiguration {
-        val virtualHosts = routes.map { routeSpecification ->
+        val virtualHosts = routes
+            .groupBy { it.routeDomain }
+            .map { (domain, routesForDomain) ->
             VirtualHost.newBuilder()
-                .setName(routeSpecification.name)
-                .addDomains(routeSpecification.routeDomain)
-                .addRoutes(
-                    Route.newBuilder()
-                        .setMatch(
-                            RouteMatch.newBuilder()
-                                .setPrefix("/")
-                                .apply {
-                                    routeSpecification.routeTag?.let { tag ->
-                                        val builder = QueryParameterMatcher.newBuilder()
-                                            .setName(properties.routing.serviceTags.queryParamName)
-                                        if (!tag.isEmpty()) {
-                                            builder.setStringMatch(StringMatcher.newBuilder()
-                                                .setExact(tag)
-                                            )
+                .setName(domain)
+                .addDomains(domain)
+                .addAllRoutes(
+                    routesForDomain.map { route ->
+                        Route.newBuilder()
+                            .setMatch(
+                                RouteMatch.newBuilder()
+                                    .setPrefix("/")
+                                    .apply {
+                                        route.routeTag?.let { tag ->
+                                            val builder = QueryParameterMatcher.newBuilder()
+                                                .setName(properties.routing.serviceTags.queryParamName)
+                                            if (!tag.isEmpty()) {
+                                                builder.setStringMatch(StringMatcher.newBuilder()
+                                                    .setExact(tag)
+                                                )
+                                            }
+                                            addQueryParameters(builder)
                                         }
-                                        addQueryParameters(builder)
                                     }
-                                }
-                        )
-                        .configureAction(routeSpecification)
-
+                            )
+                            .configureAction(route)
+                            .build()
+                    }
                 )
                 .build()
         }
