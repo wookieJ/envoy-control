@@ -1,14 +1,37 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
 import org.springframework.web.client.AsyncRestTemplate
+import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Mono
 import java.net.URI
 
 class AsyncRestTemplateControlPlaneClient(val asyncRestTemplate: AsyncRestTemplate) : AsyncControlPlaneClient {
     override fun getState(uri: URI): Mono<ServicesState> =
-        asyncRestTemplate.getForEntity<ServicesState>("$uri/state", ServicesState::class.java)
+        asyncRestTemplate.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
+            ServicesStateProto.ServicesState::class.java)
             .completable()
-            .thenApply { it.body }
+            .thenApply { deserializeProto(it.body) }
             .let { Mono.fromCompletionStage(it) }
+
+    private fun deserializeProto(body: ServicesStateProto.ServicesState?): ServicesState {
+        val serviceNameToInstances = body?.serviceNameToInstances?.map { entry ->
+            entry.key to ServiceInstances(
+                entry.value.serviceName, entry.value.instancesList.map {
+                ServiceInstance(
+                        it.id,
+                        it.tagsList.toHashSet(),
+                        it.address,
+                        it.port,
+                        it.regular,
+                        it.canary,
+                        it.weight
+                )
+            }.toHashSet()
+            )
+        }!!.toMap()
+        return ServicesState(serviceNameToInstances)
+    }
 }
