@@ -1,4 +1,5 @@
 dependencies {
     compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib', version: versions.kotlin
     compile group: 'io.projectreactor', name: 'reactor-core', version: versions.reactor
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: versions.protobuf
 }
