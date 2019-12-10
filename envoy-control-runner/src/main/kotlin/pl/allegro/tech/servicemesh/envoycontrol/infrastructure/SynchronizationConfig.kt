@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.task.SimpleAsyncTaskExecutor
 import org.springframework.http.client.SimpleClientHttpRequestFactory
+import org.springframework.http.converter.protobuf.ProtobufHttpMessageConverter
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.discovery.consul.recipes.datacenter.ConsulDatacenterReader
 import pl.allegro.tech.servicemesh.envoycontrol.EnvoyControlProperties
@@ -21,6 +22,11 @@ import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServices
 @Configuration
 @ConditionalOnProperty(name = ["envoy-control.sync.enabled"], havingValue = "true", matchIfMissing = false)
 class SynchronizationConfig {
+
+    @Bean
+    fun protobufHttpMessageConverter(): ProtobufHttpMessageConverter {
+        return ProtobufHttpMessageConverter()
+    }
 
     @Bean
     fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
