@@ -76,8 +76,15 @@ class EnvoyControlRunnerTestApp(
                     .build()
             )
             .execute()
-        val responseBody = objectMapper.readValue(response.body()?.use { it.string() }, ByteArray::class.java)
-        return ProtoBuf.load(ServicesState.serializer(), responseBody)
+        val responseBody = response.body()?.bytes()
+        return deserializeProto(responseBody)
+    }
+
+    private fun deserializeProto(body: ByteArray?): ServicesState {
+        if (body == null) {
+            return ServicesState()
+        }
+        return ProtoBuf.load(ServicesState.serializer(), body)
     }
 
     private fun getApplicationStatusResponse(): Response =
