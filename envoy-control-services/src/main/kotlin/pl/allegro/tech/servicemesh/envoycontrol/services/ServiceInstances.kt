@@ -1,8 +1,11 @@
 package pl.allegro.tech.servicemesh.envoycontrol.services
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class ServiceInstances(
     val serviceName: String,
-    val instances: Set<ServiceInstance>
+    val instances: Set<ServiceInstance> = emptySet()
 ) {
     fun withoutEmptyAddressInstances(): ServiceInstances =
         if (instances.any { it.address.isBlank() }) {

@@ -1,5 +1,8 @@
 package pl.allegro.tech.servicemesh.envoycontrol.services
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class ServiceInstance(
     val id: String,
     val tags: Set<String>,

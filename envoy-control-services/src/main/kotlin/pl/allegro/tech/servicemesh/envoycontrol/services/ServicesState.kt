@@ -1,7 +1,10 @@
 package pl.allegro.tech.servicemesh.envoycontrol.services
 
+import kotlinx.serialization.Serializable
+
 typealias ServiceName = String
 
+@Serializable
 data class ServicesState(
     val serviceNameToInstances: Map<ServiceName, ServiceInstances> = emptyMap()
 ) {
