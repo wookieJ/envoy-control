@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.pszymczyk.consul.infrastructure.Ports
+import kotlinx.serialization.protobuf.ProtoBuf
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -71,11 +72,12 @@ class EnvoyControlRunnerTestApp(
             .newCall(
                 Request.Builder()
                     .get()
-                    .url("http://localhost:$appPort/state")
+                    .url("http://localhost:$appPort/v2/state")
                     .build()
             )
             .execute()
-        return objectMapper.readValue(response.body()?.use { it.string() }, ServicesState::class.java)
+        val responseBody = objectMapper.readValue(response.body()?.use { it.string() }, ByteArray::class.java)
+        return ProtoBuf.load(ServicesState.serializer(), responseBody)
     }
 
     private fun getApplicationStatusResponse(): Response =
