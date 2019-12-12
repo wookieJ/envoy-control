@@ -112,7 +112,7 @@ class CrossDcServicesTest {
         serviceNameToInstances = mapOf(
             "service-a" to ServiceInstances(
                 "service-a",
-                setOf(ServiceInstance("1", setOf(), "localhost", 80))
+                setOf(ServiceInstance("1", "localhost", 80))
             )
         )
     )
@@ -120,7 +120,7 @@ class CrossDcServicesTest {
         serviceNameToInstances = mapOf(
             "service-a" to ServiceInstances(
                 "service-a",
-                setOf(ServiceInstance("2", setOf(), "localhost", 8080))
+                setOf(ServiceInstance("2", "localhost", 8080))
             )
         )
     )
@@ -129,7 +129,7 @@ class CrossDcServicesTest {
         serviceNameToInstances = mapOf(
             "service-b" to ServiceInstances(
                 "service-b",
-                setOf(ServiceInstance("3", setOf(), "localhost", 81))
+                setOf(ServiceInstance("3", "localhost", 81))
             )
         )
     )
