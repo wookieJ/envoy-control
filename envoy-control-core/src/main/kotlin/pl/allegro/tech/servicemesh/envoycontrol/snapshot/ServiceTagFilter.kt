@@ -1,14 +1,34 @@
 package pl.allegro.tech.servicemesh.envoycontrol.snapshot
 
+import com.google.re2j.Matcher
 import com.google.re2j.Pattern
 
 class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties()) {
 
-    private val tagsBlacklist: Pattern = properties.routingExcludedTags
+    /**
+     * We reuse matchers, which are not thread-safe, so we have to use thread locals
+     */
+    private val localInstance = ThreadLocal.withInitial { ThreadLocalServiceTagFilter(properties) }
+
+    /**
+     * Transforms raw instance's tags to tags that should actually be added to instance metadata.
+     *  - discards tags that are not suitable for routing
+     *  - generates tags combinations that may be used for routing
+     *
+     * @return sequence of tags that should be added to instance's metadata or null if tag entry should not be added to
+     * instance's metadata.
+     */
+    fun getAllTagsForRouting(serviceName: String, instanceTags: Set<String>): Sequence<String>? = localInstance.get()
+        .getAllTagsForRouting(serviceName, instanceTags)
+}
+
+private class ThreadLocalServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties()) {
+
+    private val tagsBlacklist: Matcher = properties.routingExcludedTags
             .joinToString("|")
-            .let { Pattern.compile(it) }
-    private val twoTagsCombinationsByService: Map<String, List<Pair<Regex, Regex>>>
-    private val threeTagsCombinationsByService: Map<String, List<Triple<Regex, Regex, Regex>>>
+            .let { Pattern.compile(it).matcher("") }
+    private val twoTagsCombinationsByService: Map<String, List<Pair<Matcher, Matcher>>>
+    private val threeTagsCombinationsByService: Map<String, List<Triple<Matcher, Matcher, Matcher>>>
 
     init {
         properties.allowedTagsCombinations.forEach {
@@ -23,7 +43,7 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
         threeTagsCombinationsByService = combinationsByService
             .mapValues { it.value.filter { it.size == 3 } }
             .mapValues { it.value
-                .map { it.sorted().map { Regex(it) } }
+                .map { it.sorted().map { Pattern.compile(it).matcher("") } }
                 .map { Triple(it[0], it[1], it[2]) }
                 .distinct()
             }
@@ -32,7 +52,7 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
         twoTagsCombinationsByService = combinationsByService
             .mapValues { it.value.filter { it.size == 2 } }
             .mapValues { it.value
-                .map { it.sorted().map { Regex(it) } }
+                .map { it.sorted().map { Pattern.compile(it).matcher("") } }
                 .map { it[0] to it[1] }
                 .distinct()
             }
@@ -43,14 +63,6 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
             .filterValues { it.isNotEmpty() }
     }
 
-    /**
-     * Transforms raw instance's tags to tags that should actually be added to instance metadata.
-     *  - discards tags that are not suitable for routing
-     *  - generates tags combinations that may be used for routing
-     *
-     * @return sequence of tags that should be added to instance's metadata or null if tag entry should not be added to
-     * instance's metadata.
-     */
     fun getAllTagsForRouting(serviceName: String, instanceTags: Set<String>): Sequence<String>? {
         val tags = filterTagsForRouting(instanceTags)
         if (tags.isEmpty()) {
@@ -101,7 +113,7 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
         .asSequence()
 
     private fun filterTagsForRouting(tags: Set<String>): Set<String> = tags
-        .filter { tag -> !tagsBlacklist.matches(tag) }
+        .filter { tag -> !matches(tagsBlacklist, tag) }
         .toSet()
 
     private fun isAllowedToMatchOnTwoTags(serviceName: String): Boolean = twoTagsCombinationsByService
@@ -116,7 +128,7 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
     private fun canBeCombined(serviceName: String, tag1: String, tag2: String): Boolean {
         return twoTagsCombinationsByService[serviceName].orEmpty()
             .any { (pattern1, pattern2) ->
-                tag1.matches(pattern1) && tag2.matches(pattern2)
+                matches(pattern1, tag1) && matches(pattern2, tag2)
             }
     }
 
@@ -126,7 +138,7 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
     private fun canBeCombined(serviceName: String, tag1: String, tag2: String, tag3: String): Boolean {
         return threeTagsCombinationsByService[serviceName].orEmpty()
             .any { (pattern1, pattern2, pattern3) ->
-                tag1.matches(pattern1) && tag2.matches(pattern2) && tag3.matches(pattern3)
+                matches(pattern1, tag1) && matches(pattern2, tag2) && matches(pattern3, tag3)
             }
     }
 
@@ -137,4 +149,10 @@ class ServiceTagFilter(properties: ServiceTagsProperties = ServiceTagsProperties
             this.second to this.third
         )
     }
+
+    /**
+     * We reuse matchers to avoid creating new matchers every time.
+     * Matcher instance is not thread-safe, so we have to ensure given matcher will not be used by multiple threads
+     */
+    private fun matches(matcher: Matcher, input: String): Boolean = matcher.reset(input).matches()
 }
