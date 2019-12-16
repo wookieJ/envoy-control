@@ -2,7 +2,6 @@ package pl.allegro.tech.servicemesh.envoycontrol.infrastructure
 
 import com.ecwid.consul.v1.ConsulClient
 import io.micrometer.core.instrument.MeterRegistry
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.task.SimpleAsyncTaskExecutor
@@ -17,11 +16,11 @@ import pl.allegro.tech.servicemesh.envoycontrol.consul.synchronization.SimpleCon
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.AsyncControlPlaneClient
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.AsyncRestTemplateControlPlaneClient
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.ControlPlaneInstanceFetcher
+import pl.allegro.tech.servicemesh.envoycontrol.synchronization.StatesCachedSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServiceChanges
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServices
 
 @Configuration
-@ConditionalOnProperty(name = ["envoy-control.sync.enabled"], havingValue = "true", matchIfMissing = false)
 class SynchronizationConfig {
 
     @Bean
@@ -37,6 +36,11 @@ class SynchronizationConfig {
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 
         return AsyncRestTemplate(requestFactory)
+    }
+
+    @Bean
+    fun protobufCache(): StatesCachedSerializer {
+        return StatesCachedSerializer()
     }
 
     @Bean
