@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.pszymczyk.consul.infrastructure.Ports
-import kotlinx.serialization.protobuf.ProtoBuf
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -12,6 +11,9 @@ import org.springframework.boot.actuate.health.Status
 import org.springframework.boot.builder.SpringApplicationBuilder
 import pl.allegro.tech.servicemesh.envoycontrol.EnvoyControl
 import pl.allegro.tech.servicemesh.envoycontrol.logger
+import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import java.time.Duration
 
@@ -76,15 +78,28 @@ class EnvoyControlRunnerTestApp(
                     .build()
             )
             .execute()
-        val responseBody = response.body()?.bytes()
-        return deserializeProto(responseBody)
+        val servicesStateProto = objectMapper.readValue(response.body()?.use { it.string() },
+            ServicesStateProto.ServicesState::class.java)
+        return deserializeProto(servicesStateProto)
     }
 
-    private fun deserializeProto(body: ByteArray?): ServicesState {
-        if (body == null) {
-            return ServicesState()
-        }
-        return ProtoBuf.load(ServicesState.serializer(), body)
+    private fun deserializeProto(body: ServicesStateProto.ServicesState?): ServicesState {
+        val serviceNameToInstances = body?.serviceNameToInstances?.map { entry ->
+            entry.key to ServiceInstances(
+                entry.value.serviceName, entry.value.instancesList.map {
+                ServiceInstance(
+                    it.id,
+                    it.address,
+                    it.port,
+                    it.tagsList.toHashSet(),
+                    it.regular,
+                    it.canary,
+                    it.weight
+                )
+            }.toHashSet()
+            )
+        }!!.toMap()
+        return ServicesState(serviceNameToInstances)
     }
 
     private fun getApplicationStatusResponse(): Response =
