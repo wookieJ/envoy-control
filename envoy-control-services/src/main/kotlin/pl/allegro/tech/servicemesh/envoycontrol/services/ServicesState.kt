@@ -1,13 +1,9 @@
 package pl.allegro.tech.servicemesh.envoycontrol.services
 
-import kotlinx.serialization.SerialId
-import kotlinx.serialization.Serializable
-
 typealias ServiceName = String
 
-@Serializable
 data class ServicesState(
-    @SerialId(1) val serviceNameToInstances: Map<ServiceName, ServiceInstances> = emptyMap()
+    val serviceNameToInstances: Map<ServiceName, ServiceInstances> = emptyMap()
 ) {
     operator fun get(serviceName: ServiceName): ServiceInstances? = serviceNameToInstances[serviceName]
 

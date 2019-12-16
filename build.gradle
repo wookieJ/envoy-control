@@ -64,7 +64,8 @@ allprojects {
             cglib             : '3.2.9',
             logback           : '1.2.3',
             slf4j             : '1.7.25',
-            serialization     : '0.14.0'
+            serialization     : '0.14.0',
+            protobuf          : '3.11.1'
     ]
 }
 

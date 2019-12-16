@@ -1,6 +1,7 @@
 plugins {
     id 'org.jetbrains.kotlin.jvm'
     id 'application'
+    id "com.google.protobuf" version "0.8.10"
 }
 
 mainClassName = 'pl.allegro.tech.servicemesh.envoycontrol.EnvoyControl'
@@ -19,6 +20,9 @@ dependencies {
 
     compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: versions.kotlin
     compile group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: versions.jackson
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: '3.11.1'
+    implementation 'io.grpc:grpc-protobuf:1.22.1'
+    implementation 'io.grpc:grpc-stub:1.22.1'
 }
 
 publishing {
@@ -34,3 +38,26 @@ test {
     useJUnitPlatform()
 }
 
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:3.9.0"
+    }
+    plugins {
+        grpc {
+            artifact = 'io.grpc:protoc-gen-grpc-java:1.22.1'
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {}
+        }
+    }
+}
+
+sourceSets {
+    main {
+        proto {
+            srcDir 'src/main/proto'
+        }
+    }
+}
