@@ -1,5 +1,7 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Mono
@@ -9,6 +11,9 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 
 class AsyncRestTemplateControlPlaneClient(val asyncRestTemplate: AsyncRestTemplate) : AsyncControlPlaneClient {
+
+    val logger: Logger = LoggerFactory.getLogger(AsyncRestTemplateControlPlaneClient::class.java)
+
     override fun getState(uri: URI): Mono<ServicesState> =
         asyncRestTemplate.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
             ServicesStateProto.ServicesState::class.java)
@@ -32,6 +37,7 @@ class AsyncRestTemplateControlPlaneClient(val asyncRestTemplate: AsyncRestTempla
             }.toHashSet()
             )
         }!!.toMap()
+        logger.info("Deserialized service states: $serviceNameToInstances")
         return ServicesState(serviceNameToInstances)
     }
 }

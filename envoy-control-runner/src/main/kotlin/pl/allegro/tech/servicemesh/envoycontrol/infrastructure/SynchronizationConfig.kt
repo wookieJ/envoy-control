@@ -2,6 +2,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.infrastructure
 
 import com.ecwid.consul.v1.ConsulClient
 import io.micrometer.core.instrument.MeterRegistry
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.task.SimpleAsyncTaskExecutor
@@ -20,6 +21,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServiceCh
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServices
 
 @Configuration
+@ConditionalOnProperty(name = ["envoy-control.sync.enabled"], havingValue = "true", matchIfMissing = false)
 class SynchronizationConfig {
 
     @Bean
