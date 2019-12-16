@@ -31,13 +31,18 @@ class SynchronizationConfig {
     }
 
     @Bean
-    fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
+    fun asyncRestTemplate(
+        envoyControlProperties: EnvoyControlProperties,
+        httpMessageConverter: ProtobufHttpMessageConverter
+    ): AsyncRestTemplate {
         val requestFactory = SimpleClientHttpRequestFactory()
         requestFactory.setTaskExecutor(SimpleAsyncTaskExecutor())
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 
-        return AsyncRestTemplate(requestFactory)
+        val asyncRestTemplate = AsyncRestTemplate(requestFactory)
+        asyncRestTemplate.messageConverters = listOf(httpMessageConverter)
+        return asyncRestTemplate
     }
 
     @Bean
