@@ -3,6 +3,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.client.RestTemplate
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalServiceChanges
@@ -10,6 +11,8 @@ import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
+import java.time.Duration
+import java.time.Instant
 
 @RestController
 class V2StateController(
@@ -51,11 +54,14 @@ class V2StateController(
         return protoResult
     }
 
-    @GetMapping(value = ["/test"], produces = ["application/json"])
-    fun getTest(): ServicesState {
-        val response = restTemplate.getForEntity("http://localhost:8080/v2/state",
+    @GetMapping(value = ["/test/{instance}"], produces = ["application/json"])
+    fun getTest(@PathVariable("instance") instance: String): String {
+        val start = Instant.now()
+        val response = restTemplate.getForEntity("$instance/v2/state",
             ServicesStateProto.ServicesState::class.java)
-        return deserializeProto(response.body)
+        val responseProto = deserializeProto(response.body)
+        val time = Duration.between(start, Instant.now())
+        return time.toString()
     }
 
     private fun deserializeProto(body: ServicesStateProto.ServicesState?): ServicesState {

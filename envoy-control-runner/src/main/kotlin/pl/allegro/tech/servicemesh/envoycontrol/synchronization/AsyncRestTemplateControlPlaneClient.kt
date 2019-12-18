@@ -12,7 +12,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 
 class AsyncRestTemplateControlPlaneClient(val asyncRestTemplate: AsyncRestTemplate) : AsyncControlPlaneClient {
 
-    val logger: Logger = LoggerFactory.getLogger(AsyncRestTemplateControlPlaneClient::class.java)
+    private val logger: Logger = LoggerFactory.getLogger(AsyncRestTemplateControlPlaneClient::class.java)
 
     override fun getState(uri: URI): Mono<ServicesState> =
         asyncRestTemplate.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
