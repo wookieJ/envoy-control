@@ -57,7 +57,7 @@ class V2StateController(
     @GetMapping(value = ["/test/{instance}"], produces = ["application/json"])
     fun getTest(@PathVariable("instance") instance: String): String {
         val start = Instant.now()
-        val response = restTemplate.getForEntity("$instance/v2/state",
+        val response = restTemplate.getForEntity("http://$instance/v2/state",
             ServicesStateProto.ServicesState::class.java)
         val responseProto = deserializeProto(response.body)
         val time = Duration.between(start, Instant.now())
