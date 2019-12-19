@@ -9,7 +9,6 @@ import org.springframework.core.task.SimpleAsyncTaskExecutor
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.http.converter.protobuf.ProtobufHttpMessageConverter
 import org.springframework.web.client.AsyncRestTemplate
-import org.springframework.web.client.RestTemplate
 import pl.allegro.tech.discovery.consul.recipes.datacenter.ConsulDatacenterReader
 import pl.allegro.tech.servicemesh.envoycontrol.EnvoyControlProperties
 import pl.allegro.tech.servicemesh.envoycontrol.consul.ConsulProperties
@@ -48,11 +47,6 @@ class SynchronizationConfig {
     @Bean
     fun protobufCache(): StatesCachedSerializer {
         return StatesCachedSerializer()
-    }
-
-    @Bean
-    fun restTemplate(httpMessageConverter: ProtobufHttpMessageConverter): RestTemplate {
-        return RestTemplate(listOf(httpMessageConverter))
     }
 
     @Bean
