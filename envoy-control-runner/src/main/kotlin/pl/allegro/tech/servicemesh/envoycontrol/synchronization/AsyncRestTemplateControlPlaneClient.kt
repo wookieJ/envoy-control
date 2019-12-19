@@ -1,6 +1,7 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
@@ -8,7 +9,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Mono
 import java.net.URI
-import java.util.concurrent.TimeUnit
 
 class AsyncRestTemplateControlPlaneClient(
     val asyncRestTemplate: AsyncRestTemplate,
@@ -17,29 +17,23 @@ class AsyncRestTemplateControlPlaneClient(
 ) : AsyncControlPlaneClient {
 
     override fun getState(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
         val response = asyncRestTemplate.getForEntity<ServicesState>("$uri/state", ServicesState::class.java)
             .completable()
             .thenApply { it.body }
             .let { Mono.fromCompletionStage(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-state.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-state.time")) }
         return response
     }
 
     override fun getV2State(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
         val response = asyncRestTemplateProto.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
             ServicesStateProto.ServicesState::class.java)
             .completable()
             .thenApply { deserializeProto(it.body) }
             .let { Mono.fromCompletionStage(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-v2-state.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-v2-state.time")) }
         return response
     }
 
