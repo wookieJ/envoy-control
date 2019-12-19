@@ -50,8 +50,8 @@ class SynchronizationConfig {
     }
 
     @Bean
-    fun controlPlaneClient(asyncRestTemplate: AsyncRestTemplate) =
-        AsyncRestTemplateControlPlaneClient(asyncRestTemplate)
+    fun controlPlaneClient(asyncRestTemplate: AsyncRestTemplate, meterRegistry: MeterRegistry) =
+        AsyncRestTemplateControlPlaneClient(asyncRestTemplate, meterRegistry)
 
     @Bean
     fun crossDcServices(
