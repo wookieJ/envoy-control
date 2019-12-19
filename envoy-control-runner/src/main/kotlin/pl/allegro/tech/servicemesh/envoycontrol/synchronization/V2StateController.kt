@@ -54,14 +54,24 @@ class V2StateController(
         return protoResult
     }
 
-    @GetMapping(value = ["/test/{instance}"], produces = ["application/json"])
-    fun getTest(@PathVariable("instance") instance: String): String {
+    @GetMapping(value = ["/test/{instance}/v2/state"])
+    fun getTestV2(@PathVariable("instance") instance: String): String {
         val start = Instant.now()
         val response = restTemplate.getForEntity("http://$instance/v2/state",
             ServicesStateProto.ServicesState::class.java)
         val responseProto = deserializeProto(response.body)
         val time = Duration.between(start, Instant.now())
-        return time.toString()
+        return "Protobuf state response time $time"
+    }
+
+    @GetMapping(value = ["/test/{instance}/state"])
+    fun getTest(@PathVariable("instance") instance: String): String {
+        val start = Instant.now()
+        val response = restTemplate.getForEntity("http://$instance/state",
+            ServicesState::class.java)
+        val responseProto = deserializeProto(response.body)
+        val time = Duration.between(start, Instant.now())
+        return "Json state response time $time"
     }
 
     private fun deserializeProto(body: ServicesStateProto.ServicesState?): ServicesState {
