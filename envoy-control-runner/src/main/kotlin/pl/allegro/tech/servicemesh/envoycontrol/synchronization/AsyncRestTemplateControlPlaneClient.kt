@@ -64,7 +64,7 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getV2StateGzip(uri: URI): Mono<ServicesState> {
         val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
-        return asyncRestTemplate.exchange(
+        return asyncRestTemplateProto.exchange(
             "$uri/v2/state",
             HttpMethod.GET,
             entity,
