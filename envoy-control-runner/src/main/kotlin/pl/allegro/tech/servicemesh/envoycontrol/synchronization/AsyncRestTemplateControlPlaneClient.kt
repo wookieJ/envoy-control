@@ -1,7 +1,7 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
 import io.micrometer.core.instrument.MeterRegistry
-import java.util.concurrent.CompletableFuture
+import io.micrometer.core.instrument.Timer
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpMethod
 import org.springframework.web.client.AsyncRestTemplate
@@ -11,7 +11,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Mono
 import java.net.URI
-import java.util.concurrent.TimeUnit
 
 class AsyncRestTemplateControlPlaneClient(
     val asyncRestTemplate: AsyncRestTemplate,
@@ -20,19 +19,17 @@ class AsyncRestTemplateControlPlaneClient(
 ) : AsyncControlPlaneClient {
 
     override fun getState(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
         return asyncRestTemplate.getForEntity("$uri/state", ServicesState::class.java)
             .completable()
             .thenApply { it.body }
             .let { Mono.fromCompletionStage(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-state.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-state.time")) }
     }
 
     override fun getStateGzip(uri: URI): Mono<ServicesState> {
         val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val sample = Timer.start(meterRegistry)
         return asyncRestTemplate.exchange(
             "$uri/state",
             HttpMethod.GET,
@@ -41,29 +38,23 @@ class AsyncRestTemplateControlPlaneClient(
         )
             .completable()
             .thenApply { it.body }
-            .let { Mono.fromCompletionStage<ServicesState?>(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-state-gzip.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .let { Mono.fromCompletionStage(it) }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-state-gzip.time")) }
     }
 
     override fun getV2State(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
         return asyncRestTemplateProto.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
             ServicesStateProto.ServicesState::class.java)
             .completable()
             .thenApply { deserializeProto(it.body) }
-            .let<CompletableFuture<ServicesState>?, Mono<ServicesState>> { Mono.fromCompletionStage(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-v2-state.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .let { Mono.fromCompletionStage(it) }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-v2-state.time")) }
     }
 
     override fun getV2StateGzip(uri: URI): Mono<ServicesState> {
         val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val sample = Timer.start(meterRegistry)
         return asyncRestTemplateProto.exchange(
             "$uri/v2/state",
             HttpMethod.GET,
@@ -72,12 +63,8 @@ class AsyncRestTemplateControlPlaneClient(
         )
             .completable()
             .thenApply { deserializeProto(it.body) }
-            .let<CompletableFuture<ServicesState>?, Mono<ServicesState>> { Mono.fromCompletionStage(it) }
-            .elapsed()
-            .map { t ->
-                meterRegistry.timer("sync-dc-get-v2-state-gzip.time").record(t.t1, TimeUnit.MILLISECONDS)
-                t.t2
-            }
+            .let { Mono.fromCompletionStage(it) }
+            .doOnNext { sample.stop(meterRegistry.timer("sync-dc-get-v2-state-gzip.time")) }
     }
 
     private fun deserializeProto(body: ServicesStateProto.ServicesState?): ServicesState {

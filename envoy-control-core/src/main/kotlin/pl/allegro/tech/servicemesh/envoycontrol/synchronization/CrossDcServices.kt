@@ -58,9 +58,23 @@ class CrossDcServices(
         instances: List<URI>
     ): Mono<LocalityAwareServicesState> {
         val instance = chooseInstance(instances)
-        val protobufState = controlPlaneClient.getV2State(instance)
-        return controlPlaneClient
-            .getState(instance).zipWith(protobufState, { s1, s2 -> s1 })
+
+        var state = controlPlaneClient.getState(instance)
+        var protobufState = controlPlaneClient.getV2State(instance)
+        var gzipState = controlPlaneClient.getStateGzip(instance)
+        var gzipProtobufState = controlPlaneClient.getV2StateGzip(instance)
+
+        listOf(
+            { state = controlPlaneClient.getState(instance) },
+            { protobufState = controlPlaneClient.getV2State(instance) },
+            { gzipState = controlPlaneClient.getStateGzip(instance) },
+            { gzipProtobufState = controlPlaneClient.getV2StateGzip(instance) }
+        ).shuffled()
+            .forEach { it() }
+
+
+        return Mono.zip(state, protobufState, gzipState, gzipProtobufState)
+            .map { t -> t.t1 }
             .map {
                 LocalityAwareServicesState(it, Locality.REMOTE, dc)
             }
