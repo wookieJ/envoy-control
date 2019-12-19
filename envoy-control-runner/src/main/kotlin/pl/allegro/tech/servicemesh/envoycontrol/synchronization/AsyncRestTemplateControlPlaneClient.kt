@@ -1,7 +1,5 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
-import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Mono
@@ -14,6 +12,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 
 class AsyncRestTemplateControlPlaneClient(
     val asyncRestTemplate: AsyncRestTemplate,
+    val asyncRestTemplateProto: AsyncRestTemplate,
     val meterRegistry: MeterRegistry
 ) : AsyncControlPlaneClient {
 
@@ -29,7 +28,7 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getV2State(uri: URI): Mono<ServicesState> {
         val sample = Timer.start(meterRegistry)
-        val response = asyncRestTemplate.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
+        val response = asyncRestTemplateProto.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
             ServicesStateProto.ServicesState::class.java)
             .completable()
             .thenApply { deserializeProto(it.body) }

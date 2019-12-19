@@ -16,7 +16,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.consul.synchronization.SimpleCon
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.AsyncControlPlaneClient
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.AsyncRestTemplateControlPlaneClient
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.ControlPlaneInstanceFetcher
-import pl.allegro.tech.servicemesh.envoycontrol.synchronization.StatesCachedSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServiceChanges
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServices
 
@@ -30,7 +29,7 @@ class SynchronizationConfig {
     }
 
     @Bean
-    fun asyncRestTemplate(
+    fun asyncRestTemplateProto(
         envoyControlProperties: EnvoyControlProperties,
         httpMessageConverter: ProtobufHttpMessageConverter
     ): AsyncRestTemplate {
@@ -45,13 +44,22 @@ class SynchronizationConfig {
     }
 
     @Bean
-    fun protobufCache(): StatesCachedSerializer {
-        return StatesCachedSerializer()
+    fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
+        val requestFactory = SimpleClientHttpRequestFactory()
+        requestFactory.setTaskExecutor(SimpleAsyncTaskExecutor())
+        requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
+        requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
+
+        return AsyncRestTemplate(requestFactory)
     }
 
     @Bean
-    fun controlPlaneClient(asyncRestTemplate: AsyncRestTemplate, meterRegistry: MeterRegistry) =
-        AsyncRestTemplateControlPlaneClient(asyncRestTemplate, meterRegistry)
+    fun controlPlaneClient(
+        asyncRestTemplate: AsyncRestTemplate,
+        asyncRestTemplateProto: AsyncRestTemplate,
+        meterRegistry: MeterRegistry
+    ) =
+        AsyncRestTemplateControlPlaneClient(asyncRestTemplate, asyncRestTemplateProto, meterRegistry)
 
     @Bean
     fun crossDcServices(
