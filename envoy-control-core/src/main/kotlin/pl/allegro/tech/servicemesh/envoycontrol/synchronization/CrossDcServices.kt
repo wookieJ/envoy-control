@@ -60,7 +60,7 @@ class CrossDcServices(
         val instance = chooseInstance(instances)
         val protobufState = controlPlaneClient.getV2State(instance)
         return controlPlaneClient
-            .getState(instance)
+            .getState(instance).zipWith(protobufState, { s1, s2 -> s1 })
             .map {
                 LocalityAwareServicesState(it, Locality.REMOTE, dc)
             }

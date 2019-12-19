@@ -2,6 +2,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm'
     id 'application'
     id "com.google.protobuf" version "0.8.10"
+    id "idea"
 }
 
 mainClassName = 'pl.allegro.tech.servicemesh.envoycontrol.EnvoyControl'
@@ -59,5 +60,11 @@ sourceSets {
         proto {
             srcDir 'src/main/proto'
         }
+    }
+}
+
+idea {
+    module {
+        sourceDirs += file("${projectDir}/build/classes/java/main")
     }
 }
