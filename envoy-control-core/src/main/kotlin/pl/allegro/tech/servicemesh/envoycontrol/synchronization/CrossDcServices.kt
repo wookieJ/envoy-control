@@ -58,6 +58,7 @@ class CrossDcServices(
         instances: List<URI>
     ): Mono<LocalityAwareServicesState> {
         val instance = chooseInstance(instances)
+        val protobufState = controlPlaneClient.getV2State(instance)
         return controlPlaneClient
             .getState(instance)
             .map {

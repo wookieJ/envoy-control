@@ -17,9 +17,17 @@ class AsyncRestTemplateControlPlaneClient(
     val meterRegistry: MeterRegistry
 ) : AsyncControlPlaneClient {
 
-    private val logger: Logger = LoggerFactory.getLogger(AsyncRestTemplateControlPlaneClient::class.java)
-
     override fun getState(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
+        val response = asyncRestTemplate.getForEntity<ServicesState>("$uri/state", ServicesState::class.java)
+            .completable()
+            .thenApply { it.body }
+            .let { Mono.fromCompletionStage(it) }
+        sample.stop(meterRegistry.timer("sync-dc-get-state.time"))
+        return response
+    }
+
+    override fun getV2State(uri: URI): Mono<ServicesState> {
         val sample = Timer.start(meterRegistry)
         val response = asyncRestTemplate.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
             ServicesStateProto.ServicesState::class.java)
@@ -46,17 +54,6 @@ class AsyncRestTemplateControlPlaneClient(
             }.toHashSet()
             )
         }!!.toMap()
-        logger.info("Deserialized service states: $serviceNameToInstances")
         return ServicesState(serviceNameToInstances)
-    }
-
-    fun getV2State(uri: URI): Mono<ServicesState> {
-        val sample = Timer.start(meterRegistry)
-        val response = asyncRestTemplate.getForEntity<ServicesState>("$uri/state", ServicesState::class.java)
-            .completable()
-            .thenApply { it.body }
-            .let { Mono.fromCompletionStage(it) }
-        sample.stop(meterRegistry.timer("sync-dc-get-state.time"))
-        return response
     }
 }
