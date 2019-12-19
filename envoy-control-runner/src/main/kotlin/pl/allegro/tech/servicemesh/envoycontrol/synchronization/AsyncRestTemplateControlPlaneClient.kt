@@ -6,6 +6,8 @@ import reactor.core.publisher.Mono
 import java.net.URI
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpMethod
 import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
@@ -26,6 +28,17 @@ class AsyncRestTemplateControlPlaneClient(
         return response
     }
 
+    override fun getStateGzip(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
+        val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val response = asyncRestTemplate.exchange("$uri/state", HttpMethod.GET, entity, ServicesState::class.java)
+            .completable()
+            .thenApply { it.body }
+            .let { Mono.fromCompletionStage(it) }
+        sample.stop(meterRegistry.timer("sync-dc-get-state-gzip.time"))
+        return response
+    }
+
     override fun getV2State(uri: URI): Mono<ServicesState> {
         val sample = Timer.start(meterRegistry)
         val response = asyncRestTemplateProto.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
@@ -34,6 +47,22 @@ class AsyncRestTemplateControlPlaneClient(
             .thenApply { deserializeProto(it.body) }
             .let { Mono.fromCompletionStage(it) }
         sample.stop(meterRegistry.timer("sync-dc-get-v2-state.time"))
+        return response
+    }
+
+    override fun getV2StateGzip(uri: URI): Mono<ServicesState> {
+        val sample = Timer.start(meterRegistry)
+        val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val response = asyncRestTemplate.exchange(
+            "$uri/v2/state",
+            HttpMethod.GET,
+            entity,
+            ServicesStateProto.ServicesState::class.java
+        )
+            .completable()
+            .thenApply { deserializeProto(it.body) }
+            .let { Mono.fromCompletionStage(it) }
+        sample.stop(meterRegistry.timer("sync-dc-get-v2-state-gzip.time"))
         return response
     }
 

@@ -154,22 +154,25 @@ class CrossDcServicesTest {
 
     private fun asyncClient(): AsyncControlPlaneClient {
         return object : AsyncControlPlaneClient {
-            override fun getState(uri: URI): Mono<ServicesState> = when {
-                uri.path == "/error" -> Mono.error(RuntimeException(uri.toString()))
-                uri.path == "/empty" -> Mono.empty()
-                uri.path == "/successful-states" -> successfulStatesSequence.next()
-                uri.path == "/second-request-failing" -> secondStateFailingSequence.next()
-                else -> Mono.just(
-                    ServicesState(
-                        serviceNameToInstances = mapOf(
-                            uri.authority to ServiceInstances(
-                                uri.authority,
-                                emptySet()
-                            )
-                        )
+            override fun getState(uri: URI): Mono<ServicesState> = getStateMono(uri)
+            override fun getV2State(uri: URI): Mono<ServicesState> = getStateMono(uri)
+        }
+    }
+
+    private fun getStateMono(uri: URI) = when {
+        uri.path == "/error" -> Mono.error(RuntimeException(uri.toString()))
+        uri.path == "/empty" -> Mono.empty()
+        uri.path == "/successful-states" -> successfulStatesSequence.next()
+        uri.path == "/second-request-failing" -> secondStateFailingSequence.next()
+        else -> Mono.just(
+            ServicesState(
+                serviceNameToInstances = mapOf(
+                    uri.authority to ServiceInstances(
+                        uri.authority,
+                        emptySet()
                     )
                 )
-            }
-        }
+            )
+        )
     }
 }

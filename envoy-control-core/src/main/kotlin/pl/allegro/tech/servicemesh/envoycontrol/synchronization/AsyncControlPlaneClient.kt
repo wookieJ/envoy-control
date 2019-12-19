@@ -6,5 +6,7 @@ import java.net.URI
 
 interface AsyncControlPlaneClient {
     fun getState(uri: URI): Mono<ServicesState>
+    fun getStateGzip(uri: URI): Mono<ServicesState>
     fun getV2State(uri: URI): Mono<ServicesState>
+    fun getV2StateGzip(uri: URI): Mono<ServicesState>
 }
