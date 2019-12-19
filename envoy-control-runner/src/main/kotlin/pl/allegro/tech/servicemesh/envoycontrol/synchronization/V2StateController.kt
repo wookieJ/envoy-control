@@ -69,7 +69,6 @@ class V2StateController(
         val start = Instant.now()
         val response = restTemplate.getForEntity("http://$instance/state",
             ServicesState::class.java)
-        val responseProto = deserializeProto(response.body)
         val time = Duration.between(start, Instant.now())
         return "Json state response time $time"
     }
