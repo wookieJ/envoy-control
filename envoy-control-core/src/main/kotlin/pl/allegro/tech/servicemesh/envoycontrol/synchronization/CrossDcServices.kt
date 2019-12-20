@@ -60,22 +60,17 @@ class CrossDcServices(
     ): Mono<LocalityAwareServicesState> {
         val instance = chooseInstance(instances)
 
-        lateinit var state: Mono<ServicesState>
-        lateinit var protobufState: Mono<ServicesState>
-        lateinit var gzipState: Mono<ServicesState>
-        lateinit var gzipProtobufState: Mono<ServicesState>
+        logger.debug("servicesStateFromDc called")
 
-        listOf(
-            { state = controlPlaneClient.getState(instance) },
-            { protobufState = logErrorAndContinue(controlPlaneClient.getV2State(instance), "protobufState") },
-            { gzipState = logErrorAndContinue(controlPlaneClient.getStateGzip(instance).onErrorReturn(ServicesState()), "gzipState") },
-            { gzipProtobufState = logErrorAndContinue(controlPlaneClient.getV2StateGzip(instance).onErrorReturn(ServicesState()), "gzipProtobufState") }
+        val states = listOf(
+            controlPlaneClient.getState(instance),
+            logErrorAndContinue(controlPlaneClient.getV2State(instance), "protobufState"),
+            logErrorAndContinue(controlPlaneClient.getStateGzip(instance), "gzipState"),
+            logErrorAndContinue(controlPlaneClient.getV2StateGzip(instance), "gzipProtobufState")
         ).shuffled()
-            .forEach { it() }
 
-
-        return Mono.zip(state, protobufState, gzipState, gzipProtobufState)
-            .map { t -> t.t1 }
+        return Mono.zip(states[0], states[1], states[2], states[3])
+            .map { it.t1 }
             .map {
                 LocalityAwareServicesState(it, Locality.REMOTE, dc)
             }
