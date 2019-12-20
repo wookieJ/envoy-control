@@ -3,6 +3,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.servicemesh.envoycontrol.model.ServicesStateProto
@@ -28,7 +29,7 @@ class AsyncRestTemplateControlPlaneClient(
     }
 
     override fun getStateGzip(uri: URI): Mono<ServicesState> {
-        val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "gzip") })
         val sample = Timer.start(meterRegistry)
         return asyncRestTemplate.exchange(
             "$uri/state",
@@ -53,7 +54,7 @@ class AsyncRestTemplateControlPlaneClient(
     }
 
     override fun getV2StateGzip(uri: URI): Mono<ServicesState> {
-        val entity = HttpEntity(mapOf("accept-encoding" to "gzip"))
+        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "gzip") })
         val sample = Timer.start(meterRegistry)
         return asyncRestTemplateProto.exchange(
             "$uri/v2/state",

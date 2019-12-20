@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import pl.allegro.tech.servicemesh.envoycontrol.logger
 import pl.allegro.tech.servicemesh.envoycontrol.services.Locality
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.net.URI
@@ -59,16 +60,16 @@ class CrossDcServices(
     ): Mono<LocalityAwareServicesState> {
         val instance = chooseInstance(instances)
 
-        var state = controlPlaneClient.getState(instance)
-        var protobufState = controlPlaneClient.getV2State(instance)
-        var gzipState = controlPlaneClient.getStateGzip(instance)
-        var gzipProtobufState = controlPlaneClient.getV2StateGzip(instance)
+        lateinit var state: Mono<ServicesState>
+        lateinit var protobufState: Mono<ServicesState>
+        lateinit var gzipState: Mono<ServicesState>
+        lateinit var gzipProtobufState: Mono<ServicesState>
 
         listOf(
             { state = controlPlaneClient.getState(instance) },
-            { protobufState = controlPlaneClient.getV2State(instance) },
-            { gzipState = controlPlaneClient.getStateGzip(instance) },
-            { gzipProtobufState = controlPlaneClient.getV2StateGzip(instance) }
+            { protobufState = logErrorAndContinue(controlPlaneClient.getV2State(instance), "protobufState") },
+            { gzipState = logErrorAndContinue(controlPlaneClient.getStateGzip(instance).onErrorReturn(ServicesState()), "gzipState") },
+            { gzipProtobufState = logErrorAndContinue(controlPlaneClient.getV2StateGzip(instance).onErrorReturn(ServicesState()), "gzipProtobufState") }
         ).shuffled()
             .forEach { it() }
 
@@ -89,4 +90,11 @@ class CrossDcServices(
     }
 
     private fun chooseInstance(serviceInstances: List<URI>): URI = serviceInstances.random()
+
+    private fun logErrorAndContinue(state: Mono<ServicesState>, name: String): Mono<ServicesState> {
+        return state.onErrorResume { e ->
+            logger.error("LOADING SERVICE STATE FAILED FOR VERSION: ${name}", e)
+            Mono.just(ServicesState())
+        }
+    }
 }
