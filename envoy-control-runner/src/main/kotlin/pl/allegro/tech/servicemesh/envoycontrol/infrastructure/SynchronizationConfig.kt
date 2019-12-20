@@ -6,8 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.task.SimpleAsyncTaskExecutor
-import org.springframework.http.client.SimpleClientHttpRequestFactory
+import org.springframework.http.client.OkHttp3ClientHttpRequestFactory
 import org.springframework.http.converter.protobuf.ProtobufHttpMessageConverter
 import org.springframework.web.client.AsyncRestTemplate
 import pl.allegro.tech.discovery.consul.recipes.datacenter.ConsulDatacenterReader
@@ -34,8 +33,7 @@ class SynchronizationConfig {
         envoyControlProperties: EnvoyControlProperties,
         httpMessageConverter: ProtobufHttpMessageConverter
     ): AsyncRestTemplate {
-        val requestFactory = SimpleClientHttpRequestFactory()
-        requestFactory.setTaskExecutor(SimpleAsyncTaskExecutor())
+        val requestFactory = OkHttp3ClientHttpRequestFactory()
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 
@@ -46,8 +44,7 @@ class SynchronizationConfig {
 
     @Bean(name = arrayOf("asyncRestTemplate"))
     fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
-        val requestFactory = SimpleClientHttpRequestFactory()
-        requestFactory.setTaskExecutor(SimpleAsyncTaskExecutor())
+        val requestFactory = OkHttp3ClientHttpRequestFactory()
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 

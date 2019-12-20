@@ -24,8 +24,14 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getState(uri: URI): Mono<ServicesState> {
         logger.debug("getState called")
+        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "identity") })
         return Mono.fromCompletionStage {
-            asyncRestTemplate.getForEntity("$uri/state", ServicesState::class.java)
+            asyncRestTemplate.exchange(
+                "$uri/state",
+                HttpMethod.GET,
+                entity,
+                ServicesState::class.java
+            )
                 .completable()
         }
             .map { it.body }
@@ -38,7 +44,7 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getStateGzip(uri: URI): Mono<ServicesState> {
         logger.debug("getStateGzip called")
-        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "gzip") })
+        val entity = HttpEntity(null, HttpHeaders())
         return Mono.fromCompletionStage {
             asyncRestTemplate.exchange(
                 "$uri/state",
@@ -58,9 +64,14 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getV2State(uri: URI): Mono<ServicesState> {
         logger.debug("getV2State called")
+        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "identity") })
         return Mono.fromCompletionStage {
-            asyncRestTemplateProto.getForEntity<ServicesStateProto.ServicesState>("$uri/v2/state",
-                ServicesStateProto.ServicesState::class.java)
+            asyncRestTemplateProto.exchange(
+                "$uri/v2/state",
+                HttpMethod.GET,
+                entity,
+                ServicesStateProto.ServicesState::class.java
+            )
                 .completable()
         }
             .map { deserializeProto(it.body) }
@@ -73,10 +84,10 @@ class AsyncRestTemplateControlPlaneClient(
 
     override fun getV2StateGzip(uri: URI): Mono<ServicesState> {
         logger.debug("getV2StateGzip called")
-        val entity = HttpEntity(null, HttpHeaders().apply { add(HttpHeaders.ACCEPT_ENCODING, "gzip") })
+        val entity = HttpEntity(null, HttpHeaders())
 
         return Mono.fromCompletionStage {
-            asyncRestTemplate.exchange(
+            asyncRestTemplateProto.exchange(
                 "$uri/v2/state",
                 HttpMethod.GET,
                 entity,
