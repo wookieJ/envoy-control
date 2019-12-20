@@ -2,6 +2,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.infrastructure
 
 import com.ecwid.consul.v1.ConsulClient
 import io.micrometer.core.instrument.MeterRegistry
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -28,7 +29,7 @@ class SynchronizationConfig {
         return ProtobufHttpMessageConverter()
     }
 
-    @Bean
+    @Bean(name = arrayOf("asyncRestTemplateProto"))
     fun asyncRestTemplateProto(
         envoyControlProperties: EnvoyControlProperties,
         httpMessageConverter: ProtobufHttpMessageConverter
@@ -43,7 +44,7 @@ class SynchronizationConfig {
         return asyncRestTemplate
     }
 
-    @Bean
+    @Bean(name = arrayOf("asyncRestTemplate"))
     fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
         val requestFactory = SimpleClientHttpRequestFactory()
         requestFactory.setTaskExecutor(SimpleAsyncTaskExecutor())
@@ -55,8 +56,8 @@ class SynchronizationConfig {
 
     @Bean
     fun controlPlaneClient(
-        asyncRestTemplate: AsyncRestTemplate,
-        asyncRestTemplateProto: AsyncRestTemplate,
+        @Qualifier("asyncRestTemplate") asyncRestTemplate: AsyncRestTemplate,
+        @Qualifier("asyncRestTemplateProto") asyncRestTemplateProto: AsyncRestTemplate,
         meterRegistry: MeterRegistry
     ) =
         AsyncRestTemplateControlPlaneClient(asyncRestTemplate, asyncRestTemplateProto, meterRegistry)
