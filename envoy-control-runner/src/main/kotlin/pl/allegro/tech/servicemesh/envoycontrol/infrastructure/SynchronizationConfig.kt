@@ -2,6 +2,8 @@ package pl.allegro.tech.servicemesh.envoycontrol.infrastructure
 
 import com.ecwid.consul.v1.ConsulClient
 import io.micrometer.core.instrument.MeterRegistry
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -33,7 +35,12 @@ class SynchronizationConfig {
         envoyControlProperties: EnvoyControlProperties,
         httpMessageConverter: ProtobufHttpMessageConverter
     ): AsyncRestTemplate {
-        val requestFactory = OkHttp3ClientHttpRequestFactory()
+        val logging = HttpLoggingInterceptor()
+        logging.setLevel(HttpLoggingInterceptor.Level.BODY)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(logging)
+            .build()
+        val requestFactory = OkHttp3ClientHttpRequestFactory(client)
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 
@@ -44,7 +51,12 @@ class SynchronizationConfig {
 
     @Bean(name = arrayOf("asyncRestTemplate"))
     fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
-        val requestFactory = OkHttp3ClientHttpRequestFactory()
+        val logging = HttpLoggingInterceptor()
+        logging.setLevel(HttpLoggingInterceptor.Level.BODY)
+        val client = OkHttpClient.Builder()
+            .addInterceptor(logging)
+            .build()
+        val requestFactory = OkHttp3ClientHttpRequestFactory(client)
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
         requestFactory.setReadTimeout(envoyControlProperties.sync.readTimeout.toMillis().toInt())
 
