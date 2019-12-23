@@ -3,7 +3,6 @@ package pl.allegro.tech.servicemesh.envoycontrol.infrastructure
 import com.ecwid.consul.v1.ConsulClient
 import io.micrometer.core.instrument.MeterRegistry
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
@@ -20,10 +19,36 @@ import pl.allegro.tech.servicemesh.envoycontrol.synchronization.AsyncRestTemplat
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.ControlPlaneInstanceFetcher
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServiceChanges
 import pl.allegro.tech.servicemesh.envoycontrol.synchronization.CrossDcServices
+import okhttp3.Interceptor
+import okhttp3.Response
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import java.io.IOException
 
 @Configuration
 @ConditionalOnProperty(name = ["envoy-control.sync.enabled"], havingValue = "true", matchIfMissing = false)
 class SynchronizationConfig {
+
+    class LoggingInterceptor : Interceptor {
+        private val logger: Logger = LoggerFactory.getLogger(SynchronizationConfig::class.java)
+
+        @Throws(IOException::class)
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val request = chain.request()
+
+            val t1 = System.nanoTime()
+            logger.info("OkHttp - " + String.format("Sending request %s on %s%n%s",
+                request.url(), chain.connection(), request.headers()))
+
+            val response = chain.proceed(request)
+
+            val t2 = System.nanoTime()
+            logger.info("OkHttp - " + String.format("Received response for %s in %.1fms%n%s",
+                response.request().url(), (t2 - t1) / 1e6, response.headers()))
+
+            return response
+        }
+    }
 
     @Bean
     fun protobufHttpMessageConverter(): ProtobufHttpMessageConverter {
@@ -35,10 +60,8 @@ class SynchronizationConfig {
         envoyControlProperties: EnvoyControlProperties,
         httpMessageConverter: ProtobufHttpMessageConverter
     ): AsyncRestTemplate {
-        val logging = HttpLoggingInterceptor()
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY)
         val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
+            .addInterceptor(LoggingInterceptor())
             .build()
         val requestFactory = OkHttp3ClientHttpRequestFactory(client)
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
@@ -51,10 +74,8 @@ class SynchronizationConfig {
 
     @Bean(name = arrayOf("asyncRestTemplate"))
     fun asyncRestTemplate(envoyControlProperties: EnvoyControlProperties): AsyncRestTemplate {
-        val logging = HttpLoggingInterceptor()
-        logging.setLevel(HttpLoggingInterceptor.Level.BODY)
         val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
+            .addInterceptor(LoggingInterceptor())
             .build()
         val requestFactory = OkHttp3ClientHttpRequestFactory(client)
         requestFactory.setConnectTimeout(envoyControlProperties.sync.connectionTimeout.toMillis().toInt())
