@@ -37,13 +37,13 @@ class SynchronizationConfig {
             val request = chain.request()
 
             val t1 = System.nanoTime()
-            logger.info("OkHttp - " + String.format("Sending request %s on %s%n%s",
+            logger.info(String.format("[OkHttp] Sending request %s on %s%n%s",
                 request.url(), chain.connection(), request.headers()))
 
             val response = chain.proceed(request)
 
             val t2 = System.nanoTime()
-            logger.info("OkHttp - " + String.format("Received response for %s in %.1fms%n%s",
+            logger.info(String.format("[OkHttp] Received response for %s in %.1fms%n%s",
                 response.request().url(), (t2 - t1) / 1e6, response.headers()))
 
             return response
