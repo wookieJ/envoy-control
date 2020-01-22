@@ -59,7 +59,9 @@ class ConsulServiceChangesTest {
                 }
             }
             .then { deregisterService(id = "123") }
-            .expectNextMatches { it["abc"]!!.instances.isEmpty() }
+            .assertNext {
+                assertThat(it["abc"]).isNull()
+            }
             .thenCancel()
             .verify()
     }

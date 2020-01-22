@@ -11,10 +11,8 @@ data class ServicesState(
     fun serviceNames(): Set<ServiceName> = serviceNameToInstances.keys
     fun allInstances(): Collection<ServiceInstances> = serviceNameToInstances.values
 
-    fun remove(serviceName: ServiceName): ServicesState {
-        // TODO: https://github.com/allegro/envoy-control/issues/11
-        return change(ServiceInstances(serviceName, instances = emptySet()))
-    }
+    fun remove(serviceName: ServiceName): ServicesState =
+        copy(serviceNameToInstances = serviceNameToInstances - serviceName)
 
     fun add(serviceName: ServiceName): ServicesState =
         if (serviceNameToInstances.containsKey(serviceName)) this
