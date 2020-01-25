@@ -34,7 +34,7 @@ class ConsulServiceChanges(
             { sink ->
                 watcher.stateReceiver = { sink.next(it) }
             },
-            FluxSink.OverflowStrategy.LATEST
+            FluxSink.OverflowStrategy.LATEST   // TODO: measure dropped events
         )
             .distinctUntilChanged()
             .doOnSubscribe { watcher.start() }

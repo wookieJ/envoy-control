@@ -10,6 +10,7 @@ class GlobalServiceChanges(
     fun combined(): Flux<List<LocalityAwareServicesState>> {
         val serviceStatesStreams: List<Flux<Set<LocalityAwareServicesState>>> = serviceChanges.map { it.stream() }
 
+        // TODO: prefetch = 1
         return Flux.combineLatest(serviceStatesStreams) { statesArray ->
             (statesArray.asSequence() as Sequence<List<LocalityAwareServicesState>>)
                 .flatten()

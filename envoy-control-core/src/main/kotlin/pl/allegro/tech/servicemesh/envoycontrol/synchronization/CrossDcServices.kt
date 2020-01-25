@@ -25,7 +25,7 @@ class CrossDcServices(
             .interval(Duration.ofSeconds(0), Duration.ofSeconds(interval))
             // Cross DC sync is not a backpressure compatible stream. If running cross dc sync is slower than interval
             // we have to drop interval events and run another cross dc on another interval tick.
-            .onBackpressureDrop()
+            .onBackpressureDrop()  // TODO: measure dropped events
             .flatMap {
                 Flux.fromIterable(remoteDcs)
                     .map { dc -> dcWithControlPlaneInstances(dc) }

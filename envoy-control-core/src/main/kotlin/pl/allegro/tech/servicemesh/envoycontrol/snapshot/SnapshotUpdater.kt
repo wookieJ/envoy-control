@@ -43,6 +43,7 @@ class SnapshotUpdater(
     )
 
     fun start(changes: Flux<List<LocalityAwareServicesState>>): Flux<UpdateResult> {
+        // Flux.merge makes request(32) so it's prone to overflow. Backpressure behaviour should be set on publishers
         return Flux.merge(
                 services(changes),
                 groups()
@@ -91,7 +92,7 @@ class SnapshotUpdater(
 
     fun services(changes: Flux<List<LocalityAwareServicesState>>): Flux<UpdateResult> {
         return changes
-                .sample(properties.stateSampleDuration)
+                .sample(properties.stateSampleDuration)   // TODO: po co to? przecież już mamy interval z backpressure na źródle
                 .publishOn(scheduler)
                 .map { states ->
                     val lastXdsSnapshot = snapshotFactory.newSnapshot(states, ads = false)
