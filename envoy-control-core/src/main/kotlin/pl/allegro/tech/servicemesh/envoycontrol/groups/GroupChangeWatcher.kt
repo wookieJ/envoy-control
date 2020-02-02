@@ -2,10 +2,10 @@ package pl.allegro.tech.servicemesh.envoycontrol.groups
 
 import io.envoyproxy.controlplane.cache.ConfigWatcher
 import io.envoyproxy.controlplane.cache.Response
-import io.envoyproxy.controlplane.cache.SimpleCache
 import io.envoyproxy.controlplane.cache.Watch
 import io.envoyproxy.envoy.api.v2.DiscoveryRequest
 import pl.allegro.tech.servicemesh.envoycontrol.EnvoyControlMetrics
+import pl.allegro.tech.servicemesh.envoycontrol.SimpleCache
 import pl.allegro.tech.servicemesh.envoycontrol.logger
 import reactor.core.publisher.Flux
 import reactor.core.publisher.FluxSink

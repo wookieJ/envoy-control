@@ -16,13 +16,6 @@ class AsyncRestTemplateControlPlaneClient(
             asyncRestTemplate.getForEntity("$uri/state", ServicesState::class.java)
                 .completable()
                 .thenApply { it.body }
-                .thenApply {
-                    ServicesState(
-                        serviceNameToInstances = it.serviceNameToInstances.filter { service ->
-                            service.value.instances.isNotEmpty()
-                        }
-                    )
-                }
         }
             .elapsed()
             .map { t ->
