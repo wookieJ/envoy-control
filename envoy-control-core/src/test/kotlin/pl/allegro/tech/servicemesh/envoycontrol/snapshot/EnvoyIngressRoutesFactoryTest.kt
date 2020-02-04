@@ -96,29 +96,6 @@ internal class EnvoyIngressRoutesFactoryTest {
     )
 
     @Test
-    fun `should create route config with no endpoints allowed`() {
-        // given
-        val proxySettingsNoEndpoints = ProxySettings(
-            incoming = Incoming(endpoints = listOf(), permissionsEnabled = true)
-        )
-
-        // when
-        val routeConfig = routesFactory.createSecuredIngressRouteConfig(proxySettingsNoEndpoints)
-
-        // then
-        routeConfig
-            .hasSingleVirtualHostThat {
-                hasStatusVirtualClusters()
-                hasOneDomain("*")
-                hasOnlyRoutesInOrder(
-                    *adminRoutes,
-                    statusRoute(),
-                    *ingressRoutes
-                )
-            }
-    }
-
-    @Test
     fun `should create route config with two simple endpoints and response timeout defined`() {
         // given
         val responseTimeout = Durations.fromSeconds(777)
@@ -156,48 +133,6 @@ internal class EnvoyIngressRoutesFactoryTest {
                 hasOnlyRoutesInOrder(
                     *adminRoutes,
                     statusRoute(idleTimeout, responseTimeout),
-                    *ingressRoutes
-                )
-                matchingRetryPolicy(retryPolicyProps.default)
-            }
-    }
-
-    @Test
-    fun `should create multiple routes for multiple methods and clients`() {
-        // given
-        val proxySettings = ProxySettings(
-            incoming = Incoming(
-                healthCheck = HealthCheck(
-                    path = "/status/custom",
-                    clusterName = "local_service_health_check"
-                ),
-                endpoints = listOf(
-                    IncomingEndpoint(
-                        path = "/endpoint",
-                        clients = setOf("client1", "group1"),
-                        methods = setOf("GET", "POST")
-                    )
-                ),
-                permissionsEnabled = true,
-                roles = listOf(
-                    Role(name = "group1", clients = setOf("clientB", "other-client")),
-                    Role(name = "group2", clients = setOf("clientC"))
-                )
-            )
-        )
-
-        // when
-        val routeConfig = routesFactory.createSecuredIngressRouteConfig(proxySettings)
-
-        // then
-        routeConfig
-            .hasSingleVirtualHostThat {
-                hasStatusVirtualClusters()
-                hasOneDomain("*")
-                hasOnlyRoutesInOrder(
-                    *adminRoutes,
-                    statusRoute(clusterName = "local_service_health_check", healthCheckPath = "/status/custom"),
-                    statusRoute(),
                     *ingressRoutes
                 )
                 matchingRetryPolicy(retryPolicyProps.default)
