@@ -1,6 +1,10 @@
 package pl.allegro.tech.servicemesh.envoycontrol.snapshot
 
 import com.google.protobuf.util.Durations
+import com.nhaarman.mockitokotlin2.any
+import com.nhaarman.mockitokotlin2.doReturn
+import com.nhaarman.mockitokotlin2.doThrow
+import com.nhaarman.mockitokotlin2.mock
 import io.envoyproxy.controlplane.cache.Response
 import io.envoyproxy.controlplane.cache.Snapshot
 import io.envoyproxy.controlplane.cache.SnapshotCache
@@ -10,6 +14,8 @@ import io.envoyproxy.envoy.api.v2.DiscoveryRequest
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertDoesNotThrow
+import org.junit.jupiter.api.assertThrows
 import pl.allegro.tech.servicemesh.envoycontrol.groups.AllServicesGroup
 import pl.allegro.tech.servicemesh.envoycontrol.groups.DependencySettings
 import pl.allegro.tech.servicemesh.envoycontrol.groups.DomainDependency
@@ -127,6 +133,38 @@ class SnapshotUpdaterTest {
         assertThat(snapshot.routes().resources().values
             .first { it.name == "default_routes" }.virtualHostsCount)
             .isEqualTo(2)
+    }
+
+    @Test
+    fun `should not crash on bad snapshot generation`() {
+        // given
+        val mock = mock<ServicesGroup> {
+            on { isGlobalGroup() } doThrow RuntimeException()
+            on { serviceName } doReturn "example-service"
+        }
+        val uninitializedSnapshot = null
+        val cache = newCache()
+        cache.setSnapshot(mock, uninitializedSnapshot)
+
+        // given
+        val updater = SnapshotUpdater(
+                cache,
+                properties = SnapshotProperties(),
+                scheduler = Schedulers.newSingle("update-snapshot"),
+                onGroupAdded = Flux.just(listOf()),
+                meterRegistry = simpleMeterRegistry
+        )
+
+        // when
+        assertDoesNotThrow {
+            updater.start(Flux.just(emptyList())).blockFirst()
+        }
+
+        // then
+        val snapshot = cache.getSnapshot(mock)
+        assertThat(snapshot).isEqualTo(uninitializedSnapshot)
+        assertThat(simpleMeterRegistry.find("snapshot-updater.services.example-service.updates.errors")
+            .counter()?.count()).isEqualTo(1.0)
     }
 
     private fun SnapshotUpdater.startWithServices(vararg services: String) {

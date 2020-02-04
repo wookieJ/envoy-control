@@ -27,6 +27,7 @@ dependencies {
 
     testImplementation group: 'org.testcontainers', name: 'testcontainers', version: versions.testcontainers
     testImplementation group: 'org.testcontainers', name: 'junit-jupiter', version: versions.testcontainers
+    testImplementation group: 'com.nhaarman.mockitokotlin2', name: 'mockito-kotlin', version: versions.mockitoKotlin
 }
 
 tasks.withType(GroovyCompile) {
