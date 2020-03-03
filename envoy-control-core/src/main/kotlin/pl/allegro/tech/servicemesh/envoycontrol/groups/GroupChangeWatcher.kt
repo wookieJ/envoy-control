@@ -45,8 +45,30 @@ internal class GroupChangeWatcher(
         knownResourceNames: MutableSet<String>,
         responseConsumer: Consumer<Response>
     ): Watch {
+        return createWatch(
+            ads,
+            request,
+            knownResourceNames,
+            responseConsumer,
+            false
+        )
+    }
+
+    override fun createWatch(
+        ads: Boolean,
+        request: DiscoveryRequest,
+        knownResourceNames: MutableSet<String>,
+        responseConsumer: Consumer<Response>,
+        hasClusterChanged: Boolean
+    ): Watch {
         val oldGroups = cache.groups()
-        val watch = cache.createWatch(ads, request, knownResourceNames, responseConsumer)
+        val watch = cache.createWatch(
+            ads,
+            request,
+            knownResourceNames,
+            responseConsumer,
+            hasClusterChanged
+        )
         val groups = cache.groups()
         metrics.setCacheGroupsCount(groups.size)
         if (oldGroups != groups) {
