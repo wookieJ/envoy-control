@@ -144,6 +144,11 @@ public class SimpleCache<T> implements SnapshotCache<T> {
                         return watch;
                     }
                 } else if (request.getTypeUrl().equals(Resources.ENDPOINT_TYPE_URL) && hasClusterChanged) {
+                    LOGGER.info("cluster changed: sending {} [{}] from node {} for version {}",
+                            request.getTypeUrl(),
+                            String.join(", ", request.getResourceNamesList()),
+                            group,
+                            request.getVersionInfo());
                     respond(watch, snapshot, group);
 
                     return watch;
