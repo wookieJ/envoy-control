@@ -22,14 +22,13 @@ internal class CachedProtoResourcesSerializer(
             "protoCache", "cacheName", "stat")
 
     override fun serialize(resources: MutableCollection<out Message>): MutableCollection<Any> {
-        val startSerialize = Timer.start(meterRegistry)
-        val result = monitorCache.get(resources) {
-            resources.asSequence()
-                .map { Any.pack(it) }
-                .toMutableList()
+        return meterRegistry.timer("proto-cache.serialize.${resources.size}.time").recordCallable{
+             monitorCache.get(resources) {
+                resources.asSequence()
+                    .map { Any.pack(it) }
+                    .toMutableList()
+            }
         }
-        startSerialize.stop(meterRegistry.timer("proto-cache.serialize.${resources.size}.time"))
-        return result
     }
 
     @Suppress("NotImplementedDeclaration")
