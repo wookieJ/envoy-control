@@ -6,6 +6,7 @@ import io.envoyproxy.controlplane.server.DefaultExecutorGroup
 import io.envoyproxy.controlplane.server.DiscoveryServer
 import io.envoyproxy.controlplane.server.ExecutorGroup
 import io.envoyproxy.controlplane.server.callback.SnapshotCollectingCallback
+import io.envoyproxy.controlplane.server.serializer.DefaultProtoResourcesSerializer
 import io.grpc.Server
 import io.grpc.netty.NettyServerBuilder
 import io.micrometer.core.instrument.MeterRegistry
@@ -152,7 +153,7 @@ class ControlPlane private constructor(
                 ),
                 groupChangeWatcher,
                 executorGroup,
-                CachedProtoResourcesSerializer(meterRegistry)
+                DefaultProtoResourcesSerializer()
             )
 
             return ControlPlane(
