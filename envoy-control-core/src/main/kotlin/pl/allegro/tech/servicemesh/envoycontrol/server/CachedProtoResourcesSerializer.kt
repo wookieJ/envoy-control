@@ -6,7 +6,6 @@ import com.google.protobuf.Any
 import com.google.protobuf.Message
 import io.envoyproxy.controlplane.server.serializer.ProtoResourcesSerializer
 import io.micrometer.core.instrument.MeterRegistry
-import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics
 
 internal class CachedProtoResourcesSerializer(
