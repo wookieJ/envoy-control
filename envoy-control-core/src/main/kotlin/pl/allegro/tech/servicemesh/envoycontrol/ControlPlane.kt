@@ -153,7 +153,7 @@ class ControlPlane private constructor(
                 ),
                 groupChangeWatcher,
                 executorGroup,
-                DefaultProtoResourcesSerializer()
+                CachedProtoResourcesSerializer(meterRegistry)
             )
 
             return ControlPlane(
