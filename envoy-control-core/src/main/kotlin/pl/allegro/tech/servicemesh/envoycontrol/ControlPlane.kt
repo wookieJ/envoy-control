@@ -6,8 +6,6 @@ import io.envoyproxy.controlplane.server.DefaultExecutorGroup
 import io.envoyproxy.controlplane.server.DiscoveryServer
 import io.envoyproxy.controlplane.server.ExecutorGroup
 import io.envoyproxy.controlplane.server.callback.SnapshotCollectingCallback
-import io.envoyproxy.controlplane.server.serializer.CachedProtoResourcesSerializer
-import io.envoyproxy.controlplane.server.serializer.DefaultProtoResourcesSerializer
 import io.grpc.Server
 import io.grpc.netty.NettyServerBuilder
 import io.micrometer.core.instrument.MeterRegistry
@@ -16,6 +14,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
 import pl.allegro.tech.servicemesh.envoycontrol.groups.GroupChangeWatcher
 import pl.allegro.tech.servicemesh.envoycontrol.groups.MetadataNodeGroup
 import pl.allegro.tech.servicemesh.envoycontrol.groups.NodeMetadataValidator
+import pl.allegro.tech.servicemesh.envoycontrol.server.CachedProtoResourcesSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.server.ExecutorType
 import pl.allegro.tech.servicemesh.envoycontrol.server.ServerProperties
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.CompositeDiscoveryServerCallbacks

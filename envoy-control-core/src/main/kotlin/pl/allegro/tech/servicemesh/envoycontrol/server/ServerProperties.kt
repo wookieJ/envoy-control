@@ -47,6 +47,6 @@ class NettyProperties {
 }
 
 class SnapshotCleanupProperties {
-    var collectAfterMillis: Duration = Duration.ofSeconds(3)
-    var collectionIntervalMillis: Duration = Duration.ofSeconds(3)
+    var collectAfterMillis: Duration = Duration.ofSeconds(10)
+    var collectionIntervalMillis: Duration = Duration.ofSeconds(10)
 }
