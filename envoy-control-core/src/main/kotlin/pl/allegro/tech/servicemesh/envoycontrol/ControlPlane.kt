@@ -15,7 +15,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
 import pl.allegro.tech.servicemesh.envoycontrol.groups.GroupChangeWatcher
 import pl.allegro.tech.servicemesh.envoycontrol.groups.MetadataNodeGroup
 import pl.allegro.tech.servicemesh.envoycontrol.groups.NodeMetadataValidator
-import pl.allegro.tech.servicemesh.envoycontrol.server.CachedProtoResourcesSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.server.ExecutorType
 import pl.allegro.tech.servicemesh.envoycontrol.server.ServerProperties
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.CompositeDiscoveryServerCallbacks
@@ -153,7 +152,7 @@ class ControlPlane private constructor(
                 ),
                 groupChangeWatcher,
                 executorGroup,
-                CachedProtoResourcesSerializer(meterRegistry)
+                DefaultProtoResourcesSerializer()
             )
 
             return ControlPlane(
