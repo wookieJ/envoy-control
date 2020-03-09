@@ -11,10 +11,10 @@ import java.util.function.Supplier
 
 internal class CachedProtoResourcesSerializer(
     private val meterRegistry: MeterRegistry,
-    reportMetrics: Boolean
+    private val reportMetrics: Boolean
 ) : ProtoResourcesSerializer {
 
-    private val monitorCache: Cache<Collection<Message>, MutableCollection<Any>> = if (reportMetrics) {
+    private val cache: Cache<Collection<Message>, MutableCollection<Any>> = if (reportMetrics) {
         GuavaCacheMetrics
             .monitor(
                 meterRegistry,
@@ -22,7 +22,7 @@ internal class CachedProtoResourcesSerializer(
                     .recordStats()
                     .weakValues()
                     .build<Collection<Message>, MutableCollection<Any>>(),
-                "protobufCache"
+                "protobuf-cache"
             )
     } else {
         CacheBuilder.newBuilder()
@@ -31,14 +31,20 @@ internal class CachedProtoResourcesSerializer(
     }
 
     override fun serialize(resources: MutableCollection<out Message>): MutableCollection<Any> {
-        return meterRegistry.timer("protobuf-cache.serialize.${resources.size}.time")
-            .record(Supplier {
-                monitorCache.get(resources) {
-                    resources.asSequence()
-                        .map { Any.pack(it) }
-                        .toMutableList()
-                }
-            })
+        return if (reportMetrics) {
+            meterRegistry.timer("protobuf-cache.serialize.time")
+                .record(Supplier { getResources(resources) })
+        } else {
+            getResources(resources)
+        }
+    }
+
+    private fun getResources(resources: MutableCollection<out Message>): MutableCollection<Any> {
+        return cache.get(resources) {
+            resources.asSequence()
+                .map { Any.pack(it) }
+                .toMutableList()
+        }
     }
 
     @Suppress("NotImplementedDeclaration")
