@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package pl.allegro.tech.servicemesh.envoycontrol.snapshot
 
 import io.envoyproxy.controlplane.cache.Snapshot
@@ -16,6 +18,8 @@ import pl.allegro.tech.servicemesh.envoycontrol.utils.onBackpressureLatestMeasur
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Scheduler
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 
 class SnapshotUpdater(
     private val cache: SnapshotCache<Group>,
@@ -24,7 +28,8 @@ class SnapshotUpdater(
     private val onGroupAdded: Flux<out List<Group>>,
     private val meterRegistry: MeterRegistry,
     envoyHttpFilters: EnvoyHttpFilters = EnvoyHttpFilters.emptyFilters,
-    serviceTagFilter: ServiceTagMetadataGenerator = ServiceTagMetadataGenerator(properties.routing.serviceTags)
+    serviceTagFilter: ServiceTagMetadataGenerator = ServiceTagMetadataGenerator(properties.routing.serviceTags),
+    private val threadsForGroup: ConcurrentMap<Group, Thread> = ConcurrentHashMap()
 ) {
     companion object {
         private val logger by logger()
@@ -36,8 +41,8 @@ class SnapshotUpdater(
         egressRoutesFactory = EnvoyEgressRoutesFactory(properties),
         clustersFactory = EnvoyClustersFactory(properties),
         listenersFactory = EnvoyListenersFactory(
-                properties,
-                envoyHttpFilters
+            properties,
+            envoyHttpFilters
         ),
         // Remember when LDS change we have to send RDS again
         snapshotsVersions = versions,
@@ -54,91 +59,96 @@ class SnapshotUpdater(
 
     fun start(changes: Flux<List<LocalityAwareServicesState>>): Flux<UpdateResult> {
         return Flux.merge(
-                1, // prefetch 1, instead of default 32, to avoid processing stale items in case of backpressure
-                services(changes).subscribeOn(scheduler),
-                groups().subscribeOn(scheduler)
+            1, // prefetch 1, instead of default 32, to avoid processing stale items in case of backpressure
+            services(changes).subscribeOn(scheduler),
+            groups().subscribeOn(scheduler)
         )
-                .measureBuffer("snapshot-updater-merged", meterRegistry, innerSources = 2)
-                .checkpoint("snapshot-updater-merged")
-                .name("snapshot-updater-merged").metrics()
-                .scan { previous: UpdateResult, newUpdate: UpdateResult ->
-                    UpdateResult(
-                            action = newUpdate.action,
-                            groups = newUpdate.groups,
-                            adsSnapshot = newUpdate.adsSnapshot ?: previous.adsSnapshot,
-                            xdsSnapshot = newUpdate.xdsSnapshot ?: previous.xdsSnapshot
-                    )
+            .measureBuffer("snapshot-updater-merged", meterRegistry, innerSources = 2)
+            .checkpoint("snapshot-updater-merged")
+            .name("snapshot-updater-merged").metrics()
+            .scan { previous: UpdateResult, newUpdate: UpdateResult ->
+                UpdateResult(
+                    action = newUpdate.action,
+                    groups = newUpdate.groups,
+                    adsSnapshot = newUpdate.adsSnapshot ?: previous.adsSnapshot,
+                    xdsSnapshot = newUpdate.xdsSnapshot ?: previous.xdsSnapshot
+                )
+            }
+            .doOnNext { result ->
+                val groups = if (result.action == Action.ALL_SERVICES_GROUP_ADDED) {
+                    cache.groups()
+                } else {
+                    result.groups
                 }
-                .doOnNext { result ->
-                    val groups = if (result.action == Action.ALL_SERVICES_GROUP_ADDED) {
-                        cache.groups()
-                    } else {
-                        result.groups
-                    }
 
-                    if (result.adsSnapshot != null || result.xdsSnapshot != null) {
-                        updateSnapshotForGroups(groups, result)
-                    }
+                if (result.adsSnapshot != null || result.xdsSnapshot != null) {
+                    updateSnapshotForGroups(groups, result)
                 }
+            }
     }
 
     fun groups(): Flux<UpdateResult> {
         // see GroupChangeWatcher
         return onGroupAdded
-                .publishOn(scheduler)
-                .measureBuffer("snapshot-updater-groups-published", meterRegistry)
-                .checkpoint("snapshot-updater-groups-published")
-                .name("snapshot-updater-groups-published").metrics()
-                .map { groups ->
-                    UpdateResult(action = Action.SERVICES_GROUP_ADDED, groups = groups)
+            .publishOn(scheduler)
+            .measureBuffer("snapshot-updater-groups-published", meterRegistry)
+            .checkpoint("snapshot-updater-groups-published")
+            .name("snapshot-updater-groups-published").metrics()
+            .map { groups ->
+                groups.forEach {
+                    threadsForGroup.putIfAbsent(it, Thread("${it.serviceName}-thread"))
                 }
-                .onErrorResume { e ->
-                    meterRegistry.counter("snapshot-updater.groups.updates.errors").increment()
-                    logger.error("Unable to process new group", e)
-                    Mono.justOrEmpty(UpdateResult(action = Action.ERROR_PROCESSING_CHANGES))
-                }
+                UpdateResult(action = Action.SERVICES_GROUP_ADDED, groups = groups)
+            }
+            .onErrorResume { e ->
+                meterRegistry.counter("snapshot-updater.groups.updates.errors").increment()
+                logger.error("Unable to process new group", e)
+                Mono.justOrEmpty(UpdateResult(action = Action.ERROR_PROCESSING_CHANGES))
+            }
     }
 
     fun services(changes: Flux<List<LocalityAwareServicesState>>): Flux<UpdateResult> {
         return changes
-                .sample(properties.stateSampleDuration)
-                .name("snapshot-updater-services-sampled").metrics()
-                .onBackpressureLatestMeasured("snapshot-updater-services-sampled", meterRegistry)
-                // prefetch = 1, instead of default 256, to avoid processing stale states in case of backpressure
-                .publishOn(scheduler, 1)
-                .measureBuffer("snapshot-updater-services-published", meterRegistry)
-                .checkpoint("snapshot-updater-services-published")
-                .name("snapshot-updater-services-published").metrics()
-                .map { states ->
-                    var lastXdsSnapshot: Snapshot? = null
-                    var lastAdsSnapshot: Snapshot? = null
+            .sample(properties.stateSampleDuration)
+            .name("snapshot-updater-services-sampled").metrics()
+            .onBackpressureLatestMeasured("snapshot-updater-services-sampled", meterRegistry)
+            // prefetch = 1, instead of default 256, to avoid processing stale states in case of backpressure
+            .publishOn(scheduler, 1)
+            .measureBuffer("snapshot-updater-services-published", meterRegistry)
+            .checkpoint("snapshot-updater-services-published")
+            .name("snapshot-updater-services-published").metrics()
+            .map { states ->
+                var lastXdsSnapshot: Snapshot? = null
+                var lastAdsSnapshot: Snapshot? = null
 
-                    if (properties.enabledCommunicationModes.xds) {
-                        lastXdsSnapshot = snapshotFactory.newSnapshot(states, XDS)
-                    }
-                    if (properties.enabledCommunicationModes.ads) {
-                        lastAdsSnapshot = snapshotFactory.newSnapshot(states, ADS)
-                    }
+                if (properties.enabledCommunicationModes.xds) {
+                    lastXdsSnapshot = snapshotFactory.newSnapshot(states, XDS)
+                }
+                if (properties.enabledCommunicationModes.ads) {
+                    lastAdsSnapshot = snapshotFactory.newSnapshot(states, ADS)
+                }
 
-                    val updateResult = UpdateResult(
-                            action = Action.ALL_SERVICES_GROUP_ADDED,
-                            adsSnapshot = lastAdsSnapshot,
-                            xdsSnapshot = lastXdsSnapshot
-                    )
-                    globalSnapshot = updateResult
-                    updateResult
-                }
-                .onErrorResume { e ->
-                    meterRegistry.counter("snapshot-updater.services.updates.errors").increment()
-                    logger.error("Unable to process service changes", e)
-                    Mono.justOrEmpty(UpdateResult(action = Action.ERROR_PROCESSING_CHANGES))
-                }
+                val updateResult = UpdateResult(
+                    action = Action.ALL_SERVICES_GROUP_ADDED,
+                    adsSnapshot = lastAdsSnapshot,
+                    xdsSnapshot = lastXdsSnapshot
+                )
+                globalSnapshot = updateResult
+                updateResult
+            }
+            .onErrorResume { e ->
+                meterRegistry.counter("snapshot-updater.services.updates.errors").increment()
+                logger.error("Unable to process service changes", e)
+                Mono.justOrEmpty(UpdateResult(action = Action.ERROR_PROCESSING_CHANGES))
+            }
     }
 
     fun updateSnapshotForGroup(group: Group, globalSnapshot: Snapshot) {
         try {
             val groupSnapshot = snapshotFactory.getSnapshotForGroup(group, globalSnapshot)
-            cache.setSnapshot(group, groupSnapshot)
+            threadsForGroup[group].run {
+                cache.setSnapshot(group, groupSnapshot)
+            }
         } catch (e: Throwable) {
             meterRegistry.counter("snapshot-updater.services.${group.serviceName}.updates.errors").increment()
             logger.error("Unable to create snapshot for group ${group.serviceName}", e)

@@ -9,6 +9,8 @@ import io.envoyproxy.controlplane.cache.Watch
 import io.envoyproxy.envoy.api.v2.DiscoveryRequest
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.assertj.core.api.Assertions.assertThat
+import org.awaitility.Awaitility
+import org.awaitility.Duration
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -70,8 +72,8 @@ class SnapshotUpdaterTest {
         // groups are generated foreach element in SnapshotCache.groups(), so we need to initialize them
         val groups = listOf(
             AllServicesGroup(communicationMode = XDS), groupWithProxy, groupWithServiceName,
-                groupOf(services = serviceDependencies("existingService1")),
-                groupOf(services = serviceDependencies("existingService2"))
+            groupOf(services = serviceDependencies("existingService1")),
+            groupOf(services = serviceDependencies("existingService2"))
         )
         groups.forEach {
             cache.setSnapshot(it, uninitializedSnapshot)
@@ -295,9 +297,11 @@ class SnapshotUpdaterTest {
     }
 
     private fun hasSnapshot(cache: SnapshotCache<Group>, group: Group): Snapshot {
-        val snapshot = cache.getSnapshot(group)
-        assertThat(snapshot).isNotNull
-        return snapshot
+        Awaitility.await().atMost(Duration.TEN_SECONDS).untilAsserted {
+            cache.getSnapshot(group)
+            assertThat(cache.getSnapshot(group)).isNotNull
+        }
+        return cache.getSnapshot(group)
     }
 
     private fun Snapshot.hasClusters(vararg expected: String): Snapshot {

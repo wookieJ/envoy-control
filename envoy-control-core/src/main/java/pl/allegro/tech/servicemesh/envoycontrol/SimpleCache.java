@@ -227,7 +227,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
      * {@inheritDoc}
      */
     @Override
-    public synchronized void setSnapshot(T group, Snapshot snapshot) {
+    public void setSnapshot(T group, Snapshot snapshot) {
         // we take a writeLock to prevent watches from being created while we update the snapshot
         CacheStatusInfo<T> status;
         writeLock.lock();
