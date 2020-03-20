@@ -43,21 +43,6 @@ internal class GroupChangeWatcher(
         ads: Boolean,
         request: DiscoveryRequest,
         knownResourceNames: MutableSet<String>,
-        responseConsumer: Consumer<Response>
-    ): Watch {
-        return createWatch(
-            ads,
-            request,
-            knownResourceNames,
-            responseConsumer,
-            false
-        )
-    }
-
-    override fun createWatch(
-        ads: Boolean,
-        request: DiscoveryRequest,
-        knownResourceNames: MutableSet<String>,
         responseConsumer: Consumer<Response>,
         hasClusterChanged: Boolean
     ): Watch {

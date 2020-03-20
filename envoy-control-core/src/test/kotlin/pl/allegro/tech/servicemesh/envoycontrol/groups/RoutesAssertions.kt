@@ -3,6 +3,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.groups
 import com.google.protobuf.Duration
 import io.envoyproxy.envoy.api.v2.RouteConfiguration
 import io.envoyproxy.envoy.api.v2.route.DirectResponseAction
+import io.envoyproxy.envoy.api.v2.route.HeaderMatcher
 import io.envoyproxy.envoy.api.v2.route.RedirectAction
 import io.envoyproxy.envoy.api.v2.route.RetryPolicy
 import io.envoyproxy.envoy.api.v2.route.Route
@@ -60,8 +61,14 @@ fun RouteConfiguration.hasNoResponseHeaderToAdd(key: String): RouteConfiguration
 
 fun VirtualHost.hasStatusVirtualClusters(): VirtualHost {
     return this.hasVirtualClustersInOrder(
-        { it.pattern == "/status/.*" && it.name == "status" },
-        { it.pattern == "/.*" && it.name == "endpoints" }
+        {
+            it.headersList == listOf(HeaderMatcher.newBuilder().setName(":path").setPrefixMatch("/status/").build()) &&
+            it.name == "status"
+        },
+        {
+            it.headersList == listOf(HeaderMatcher.newBuilder().setName(":path").setPrefixMatch("/").build()) &&
+            it.name == "endpoints"
+        }
     )
 }
 
@@ -173,34 +180,10 @@ fun Route.hasNoRetryPolicy() {
     assertThat(this.route.retryPolicy).isEqualTo(RetryPolicy.newBuilder().build())
 }
 
-fun Route.allOpenIngressRoute() {
+fun Route.ingressRoute() {
     this.matchingOnPrefix("/")
         .publicAccess()
         .toCluster("local_service")
-}
-
-fun fallbackIngressRoute(): (Route) -> Unit = {
-    it.matchingOnPrefix("/")
-        .publicAccess()
-        .directResponse { it.status == 503 }
-}
-
-fun statusRoute(
-    idleTimeout: Duration? = null,
-    responseTimeout: Duration? = null,
-    clusterName: String = "local_service",
-    healthCheckPath: String = "/status/"
-): (Route) -> Unit = {
-    it.matchingOnPrefix(healthCheckPath)
-        .matchingOnMethod("GET")
-        .publicAccess()
-        .toCluster(clusterName)
-    if (responseTimeout != null) {
-        it.matchingOnResponseTimeout(responseTimeout)
-    }
-    if (idleTimeout != null) {
-        it.matchingOnIdleTimeout(idleTimeout)
-    }
 }
 
 fun configDumpAuthorizedRoute(): (Route) -> Unit = {

@@ -20,8 +20,6 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.CommunicationMode.XDS
 import pl.allegro.tech.servicemesh.envoycontrol.groups.DependencySettings
 import pl.allegro.tech.servicemesh.envoycontrol.groups.DomainDependency
 import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
-import pl.allegro.tech.servicemesh.envoycontrol.groups.Incoming
-import pl.allegro.tech.servicemesh.envoycontrol.groups.IncomingEndpoint
 import pl.allegro.tech.servicemesh.envoycontrol.groups.Outgoing
 import pl.allegro.tech.servicemesh.envoycontrol.groups.ProxySettings
 import pl.allegro.tech.servicemesh.envoycontrol.groups.ServiceDependency
@@ -29,10 +27,13 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.ServicesGroup
 import pl.allegro.tech.servicemesh.envoycontrol.groups.with
 import pl.allegro.tech.servicemesh.envoycontrol.services.Locality
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
+import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstance
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceInstances
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Flux
 import reactor.core.scheduler.Schedulers
+import java.time.Duration
+import java.lang.RuntimeException
 import java.util.function.Consumer
 
 class SnapshotUpdaterTest {
@@ -43,18 +44,13 @@ class SnapshotUpdaterTest {
             Arguments.of(false, false, ADS, "ADS not supported by server"),
             Arguments.of(false, false, XDS, "XDS not supported by server")
         )
+
+        private val uninitializedSnapshot = null
     }
 
-    val proxySettings = ProxySettings(
-        incoming = Incoming(
-            endpoints = listOf(IncomingEndpoint(path = "/endpoint", clients = setOf("client"))),
-            permissionsEnabled = true
-        )
-    )
     val groupWithProxy = AllServicesGroup(
         communicationMode = ADS,
-        serviceName = "service",
-        proxySettings = proxySettings
+        serviceName = "service"
     )
     val groupWithServiceName = groupOf(
         services = setOf(ServiceDependency(service = "existingService2"))
@@ -62,10 +58,23 @@ class SnapshotUpdaterTest {
 
     val simpleMeterRegistry = SimpleMeterRegistry()
 
+    val serviceWithEnvoyInstances = LocalityAwareServicesState(
+        ServicesState(
+            serviceNameToInstances = mapOf(
+                "service" to ServiceInstances("service", setOf(ServiceInstance(
+                    id = "id",
+                    tags = setOf("envoy"),
+                    address = "127.0.0.3",
+                    port = 4444
+                )))
+            )
+        ),
+        Locality.LOCAL, "zone"
+    )
+
     @Test
     fun `should generate group snapshots`() {
-        val cache = newCache()
-        val uninitializedSnapshot = null
+        val cache = MockCache()
 
         // groups are generated foreach element in SnapshotCache.groups(), so we need to initialize them
         val groups = listOf(
@@ -99,27 +108,24 @@ class SnapshotUpdaterTest {
 
         // then
         hasSnapshot(cache, AllServicesGroup(communicationMode = XDS))
-            .hasClusters("existingService1", "existingService2")
+            .hasOnlyClustersFor("existingService1", "existingService2")
 
         hasSnapshot(cache, groupWithProxy)
-            .hasClusters("existingService1", "existingService2")
-            .hasSecuredIngressRoute("/endpoint", "client")
-            .hasServiceNameRequestHeader("service")
+            .hasOnlyClustersFor("existingService1", "existingService2")
 
         hasSnapshot(cache, groupOf(services = serviceDependencies("existingService1")))
-            .hasClusters("existingService1")
+            .hasOnlyClustersFor("existingService1")
 
         hasSnapshot(cache, groupOf(services = serviceDependencies("existingService2")))
-            .hasClusters("existingService2")
+            .hasOnlyClustersFor("existingService2")
 
         hasSnapshot(cache, groupWithServiceName)
-            .hasClusters("existingService2")
-            .hasServiceNameRequestHeader("ipsum-service")
+            .hasOnlyClustersFor("existingService2")
 
         hasSnapshot(cache, groupOf(
             services = serviceDependencies("existingService1", "existingService2"),
             domains = domainDependencies("http://domain")
-        )).hasClusters("existingService1", "existingService2", "domain_80")
+        )).hasOnlyClustersFor("existingService1", "existingService2", "domain_80")
 
         hasSnapshot(cache, groupOf(services = serviceDependencies("nonExistingService3")))
             .withoutClusters()
@@ -134,8 +140,7 @@ class SnapshotUpdaterTest {
     ) {
         val allServiceGroup = AllServicesGroup(communicationMode = mode)
 
-        val uninitializedSnapshot = null
-        val cache = newCache()
+        val cache = MockCache()
         cache.setSnapshot(allServiceGroup, uninitializedSnapshot)
 
         val updater = SnapshotUpdater(
@@ -162,8 +167,7 @@ class SnapshotUpdaterTest {
         // given
         val emptyGroup = groupOf()
 
-        val uninitializedSnapshot = null
-        val cache = newCache()
+        val cache = MockCache()
         cache.setSnapshot(emptyGroup, uninitializedSnapshot)
 
         val updater = SnapshotUpdater(
@@ -196,101 +200,222 @@ class SnapshotUpdaterTest {
     @Test
     fun `should not crash on bad snapshot generation`() {
         // given
-        val servicesGroup = servicesGroupWithAnError("example-service")
-        val cache = newCache()
-        val globalSnapshot = Snapshot.create(listOf(), listOf(), listOf(), listOf(), listOf(), "empty")
+        val servicesGroup = AllServicesGroup(
+                communicationMode = ADS,
+                serviceName = "example-service"
+        )
+        val cache = FailingMockCache()
         cache.setSnapshot(servicesGroup, null)
         val updater = SnapshotUpdater(
-            cache,
-            properties = SnapshotProperties(),
-            scheduler = Schedulers.newSingle("update-snapshot"),
-            onGroupAdded = Flux.just(),
-            meterRegistry = simpleMeterRegistry
+                cache,
+                properties = SnapshotProperties(),
+                scheduler = Schedulers.newSingle("update-snapshot"),
+                onGroupAdded = Flux.just(),
+                meterRegistry = simpleMeterRegistry
         )
 
         // when
-        updater.updateSnapshotForGroup(servicesGroup, globalSnapshot)
+        updater.start(
+                Flux.just(emptyList())
+        ).blockFirst()
 
         // then
         val snapshot = cache.getSnapshot(servicesGroup)
         assertThat(snapshot).isEqualTo(null)
         assertThat(simpleMeterRegistry.find("snapshot-updater.services.example-service.updates.errors")
-            .counter()?.count()).isEqualTo(1.0)
+                .counter()?.count()).isEqualTo(1.0)
     }
 
-    private fun servicesGroupWithAnError(name: String): ServicesGroup {
-        val proxySettings = ProxySettings(
-            incoming = Incoming(
-                endpoints = listOf(
-                    IncomingEndpoint(
-                        methods = setOf("INVALID")
-                    )
-                ),
-                permissionsEnabled = true
-            )
+    @Test
+    fun `should not disable http2 for cluster when instances disappeared`() {
+        // given
+        val cache = MockCache()
+        val updater = SnapshotUpdater(
+            cache,
+            properties = SnapshotProperties().apply {
+                stateSampleDuration = Duration.ZERO
+            },
+            scheduler = Schedulers.newSingle("update-snapshot"),
+            onGroupAdded = Flux.just(listOf()),
+            meterRegistry = simpleMeterRegistry
         )
-        return ServicesGroup(ADS, name, proxySettings)
+
+        val serviceWithNoInstances = LocalityAwareServicesState(
+            ServicesState(
+                serviceNameToInstances = mapOf(
+                    "service" to ServiceInstances("service", setOf())
+                )
+            ),
+            Locality.LOCAL, "zone"
+        )
+
+        // when
+        val results = updater
+            .services(Flux
+                .just(
+                    listOf(serviceWithEnvoyInstances),
+                    listOf(serviceWithNoInstances))
+                .delayElements(Duration.ofMillis(10))
+            )
+            .collectList().block()!!
+
+        // then
+        assertThat(results.size).isEqualTo(2)
+        results[0].adsSnapshot!!.hasHttp2Cluster("service")
+        results[0].xdsSnapshot!!.hasHttp2Cluster("service")
+        results[1].adsSnapshot!!.hasHttp2Cluster("service")
+        results[1].xdsSnapshot!!.hasHttp2Cluster("service")
+    }
+
+    @Test
+    fun `should not remove clusters`() {
+        // given
+        val cache = MockCache()
+        val updater = SnapshotUpdater(
+            cache,
+            properties = SnapshotProperties().apply {
+                stateSampleDuration = Duration.ZERO
+            },
+            scheduler = Schedulers.newSingle("update-snapshot"),
+            onGroupAdded = Flux.just(listOf()),
+            meterRegistry = simpleMeterRegistry
+        )
+
+        val stateWithNoServices = LocalityAwareServicesState(
+            ServicesState(serviceNameToInstances = mapOf()),
+            Locality.LOCAL, "zone"
+        )
+
+        // when
+        val results = updater
+            .services(Flux
+                .just(
+                    listOf(serviceWithEnvoyInstances),
+                    listOf(stateWithNoServices))
+                .delayElements(Duration.ofMillis(10))
+            )
+            .collectList().block()!!
+
+        // then
+        assertThat(results.size).isEqualTo(2)
+
+        results[0].adsSnapshot!!
+            .hasHttp2Cluster("service")
+            .hasAnEndpoint("service", "127.0.0.3", 4444)
+        results[0].xdsSnapshot!!
+            .hasHttp2Cluster("service")
+            .hasAnEndpoint("service", "127.0.0.3", 4444)
+
+        results[1].adsSnapshot!!
+            .hasHttp2Cluster("service")
+            .hasEmptyEndpoints("service")
+        results[1].xdsSnapshot!!
+            .hasHttp2Cluster("service")
+            .hasEmptyEndpoints("service")
+    }
+
+    @Test
+    fun `should not include blacklisted services in wildcard dependencies but include in direct dependencies`() {
+        // given
+        val cache = MockCache()
+
+        val allServicesGroup = AllServicesGroup(communicationMode = ADS)
+        val groupWithBlacklistedDependency = groupOf(services = serviceDependencies("mock-service"))
+
+        val groups = listOf(allServicesGroup, groupWithBlacklistedDependency)
+
+        val updater = SnapshotUpdater(
+            cache,
+            properties = SnapshotProperties().apply {
+                outgoingPermissions.allServicesDependencies.notIncludedByPrefix = mutableSetOf(
+                    "mock-", "regression-tests"
+                )
+            },
+            scheduler = Schedulers.newSingle("update-snapshot"),
+            onGroupAdded = Flux.just(groups),
+            meterRegistry = simpleMeterRegistry
+        )
+
+        val expectedWhitelistedServices = setOf("s1", "mockito", "s2", "frontend").toTypedArray()
+
+        // when
+        updater.start(fluxOfServices(
+            "s1", "mockito", "regression-tests", "s2", "frontend", "mock-service"
+        )).collectList().block()
+
+        // then
+        hasSnapshot(cache, allServicesGroup)
+            .hasOnlyClustersFor(*expectedWhitelistedServices)
+            .hasOnlyEndpointsFor(*expectedWhitelistedServices)
+            .hasOnlyEgressRoutesForClusters(*expectedWhitelistedServices)
+
+        hasSnapshot(cache, groupWithBlacklistedDependency)
+            .hasOnlyClustersFor("mock-service")
+            .hasOnlyEndpointsFor("mock-service")
+            .hasOnlyEgressRoutesForClusters("mock-service")
     }
 
     private fun SnapshotUpdater.startWithServices(vararg services: String) {
-        this.start(
-            Flux.just(
-                listOf(
-                    LocalityAwareServicesState(
-                        ServicesState(
-                            serviceNameToInstances = services.map { it to ServiceInstances(it, emptySet()) }.toMap()
-
-                        ),
-                        Locality.LOCAL, "zone"
-                    )
-                )
-            )
-        ).blockFirst()
+        this.start(fluxOfServices(*services)).blockFirst()
     }
 
-    private fun newCache(): SnapshotCache<Group> {
-        return object : SnapshotCache<Group> {
+    private fun fluxOfServices(vararg services: String) = Flux.just(
+        listOf(
+            LocalityAwareServicesState(
+                ServicesState(
+                    serviceNameToInstances = services.map { it to ServiceInstances(it, emptySet()) }.toMap()
 
-            val groups: MutableMap<Group, Snapshot?> = mutableMapOf()
+                ),
+                Locality.LOCAL, "zone"
+            )
+        )
+    )
 
-            override fun groups(): MutableCollection<Group> {
-                return groups.keys.toMutableList()
+    class FailingMockCache : MockCache() {
+        var called = 0
+
+        override fun setSnapshot(group: Group, snapshot: Snapshot?) {
+            if (called > 0) {
+                throw FailingMockCacheException()
             }
+            called += 1
+            super.setSnapshot(group, snapshot)
+        }
+    }
 
-            override fun getSnapshot(group: Group): Snapshot? {
-                return groups[group]
-            }
+    class FailingMockCacheException : RuntimeException()
 
-            override fun setSnapshot(group: Group, snapshot: Snapshot?) {
-                groups[group] = snapshot
-            }
+    open class MockCache : SnapshotCache<Group> {
+        val groups: MutableMap<Group, Snapshot?> = mutableMapOf()
 
-            override fun statusInfo(group: Group): StatusInfo<Group> {
-                throw UnsupportedOperationException("not used in testing")
-            }
+        override fun groups(): MutableCollection<Group> {
+            return groups.keys.toMutableList()
+        }
 
-            override fun createWatch(
-                ads: Boolean,
-                request: DiscoveryRequest,
-                knownResourceNames: MutableSet<String>,
-                responseConsumer: Consumer<Response>
-            ): Watch {
-                return createWatch(ads, request, knownResourceNames, responseConsumer, false)
-            }
+        override fun getSnapshot(group: Group): Snapshot? {
+            return groups[group]
+        }
 
-            override fun createWatch(
-                ads: Boolean,
-                request: DiscoveryRequest,
-                knownResourceNames: MutableSet<String>,
-                responseConsumer: Consumer<Response>,
-                hasClusterChanged: Boolean
-            ): Watch {
-                throw UnsupportedOperationException("not used in testing")
-            }
+        override fun setSnapshot(group: Group, snapshot: Snapshot?) {
+            groups[group] = snapshot
+        }
 
-            override fun clearSnapshot(group: Group?): Boolean {
-                return false
-            }
+        override fun statusInfo(group: Group): StatusInfo<Group> {
+            throw UnsupportedOperationException("not used in testing")
+        }
+
+        override fun createWatch(
+            ads: Boolean,
+            request: DiscoveryRequest,
+            knownResourceNames: MutableSet<String>,
+            responseConsumer: Consumer<Response>,
+            hasClusterChanged: Boolean
+        ): Watch {
+            throw UnsupportedOperationException("not used in testing")
+        }
+
+        override fun clearSnapshot(group: Group?): Boolean {
+            return false
         }
     }
 
@@ -300,29 +425,21 @@ class SnapshotUpdaterTest {
         return snapshot
     }
 
-    private fun Snapshot.hasClusters(vararg expected: String): Snapshot {
+    private fun Snapshot.hasOnlyClustersFor(vararg expected: String): Snapshot {
         assertThat(this.clusters().resources().keys.toSet())
             .isEqualTo(expected.toSet())
         return this
     }
 
-    private fun Snapshot.hasSecuredIngressRoute(endpoint: String, client: String): Snapshot {
-        assertThat(this.routes().resources().getValue("ingress_secured_routes").virtualHostsList.first().routesList
-            .map { it.match }
-            .filter { it.path == endpoint }
-            .filter {
-                it.headersList
-                    .any { it.name == "x-service-name" && it.exactMatch == client }
-            }
-        ).isNotEmpty
+    private fun Snapshot.hasOnlyEndpointsFor(vararg expected: String): Snapshot {
+        assertThat(this.endpoints().resources().keys.toSet())
+            .isEqualTo(expected.toSet())
         return this
     }
 
-    private fun Snapshot.hasServiceNameRequestHeader(serviceName: String): Snapshot {
-        assertThat(this.routes().resources().getValue("default_routes").requestHeadersToAddList
-            .map { it.header }
-            .filter { it.key == "x-service-name" && it.value == serviceName }
-        ).hasSize(1)
+    private fun Snapshot.hasOnlyEgressRoutesForClusters(vararg expected: String): Snapshot {
+        assertThat(this.routes().resources()["default_routes"]!!.virtualHostsList.flatMap { it.domainsList }.toSet())
+            .isEqualTo(expected.toSet() + setOf("envoy-original-destination", "*"))
         return this
     }
 
@@ -339,6 +456,28 @@ class SnapshotUpdaterTest {
             serviceDependencies = services, domainDependencies = domains
         )
     )
+
+    private fun GlobalSnapshot.hasHttp2Cluster(clusterName: String): GlobalSnapshot {
+        val cluster = this.clusters.resources()[clusterName]
+        assertThat(cluster).isNotNull
+        assertThat(cluster!!.hasHttp2ProtocolOptions()).isTrue()
+        return this
+    }
+
+    private fun GlobalSnapshot.hasAnEndpoint(clusterName: String, ip: String, port: Int): GlobalSnapshot {
+        val endpoints = this.endpoints.resources()[clusterName]
+        assertThat(endpoints).isNotNull
+        assertThat(endpoints!!.endpointsList.flatMap { it.lbEndpointsList })
+            .anyMatch { it.endpoint.address.socketAddress.let { it.address == ip && it.portValue == port } }
+        return this
+    }
+
+    private fun GlobalSnapshot.hasEmptyEndpoints(clusterName: String): GlobalSnapshot {
+        val endpoints = this.endpoints.resources()[clusterName]
+        assertThat(endpoints).isNotNull
+        assertThat(endpoints!!.endpointsList).isEmpty()
+        return this
+    }
 }
 
 fun serviceDependencies(vararg serviceNames: String): Set<ServiceDependency> =

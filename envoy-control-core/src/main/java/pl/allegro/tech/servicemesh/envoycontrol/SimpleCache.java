@@ -90,10 +90,6 @@ public class SimpleCache<T> implements SnapshotCache<T> {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     public Watch createWatch(
             boolean ads,
             DiscoveryRequest request,
