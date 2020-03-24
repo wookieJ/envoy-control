@@ -138,8 +138,11 @@ class SnapshotUpdater(
     private fun updateSnapshotForGroup(group: Group, globalSnapshot: GlobalSnapshot) {
         try {
             val groupSnapshot = snapshotFactory.getSnapshotForGroup(group, globalSnapshot)
-            meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record {
-                cache.setSnapshot(group, groupSnapshot)
+            val setSnapshot = { cache.setSnapshot(group, groupSnapshot) }
+            if (properties.metrics.cacheSetSnapshotEnabled) {
+                meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record(setSnapshot)
+            } else {
+                setSnapshot()
             }
         } catch (e: Throwable) {
             meterRegistry.counter("snapshot-updater.services.${group.serviceName}.updates.errors").increment()
@@ -147,20 +150,21 @@ class SnapshotUpdater(
         }
     }
 
-    private fun updateSnapshotForGroups(groups: Collection<Group>, result: UpdateResult) {
-        versions.retainGroups(cache.groups())
-        groups.forEach { group ->
-            if (result.adsSnapshot != null && group.communicationMode == ADS) {
-                updateSnapshotForGroup(group, result.adsSnapshot)
-            } else if (result.xdsSnapshot != null && group.communicationMode == XDS) {
-                updateSnapshotForGroup(group, result.xdsSnapshot)
-            } else {
-                meterRegistry.counter("snapshot-updater.communication-mode.errors").increment()
-                logger.error("Requested snapshot for ${group.communicationMode.name} mode, but it is not here. " +
-                    "Handling Envoy with not supported communication mode should have been rejected before." +
-                    " Please report this to EC developers.")
+    private fun updateSnapshotForGroups(groups: Collection<Group>, result: UpdateResult) = meterRegistry
+        .timer("snapshot-updater.update-snapshot-for-groups.time").record {
+            versions.retainGroups(cache.groups())
+            groups.forEach { group ->
+                if (result.adsSnapshot != null && group.communicationMode == ADS) {
+                    updateSnapshotForGroup(group, result.adsSnapshot)
+                } else if (result.xdsSnapshot != null && group.communicationMode == XDS) {
+                    updateSnapshotForGroup(group, result.xdsSnapshot)
+                } else {
+                    meterRegistry.counter("snapshot-updater.communication-mode.errors").increment()
+                    logger.error("Requested snapshot for ${group.communicationMode.name} mode, but it is not here. " +
+                        "Handling Envoy with not supported communication mode should have been rejected before." +
+                        " Please report this to EC developers.")
+                }
             }
-        }
     }
 
     private fun Flux<List<LocalityAwareServicesState>>.createClusterConfigurations(): Flux<StatesAndClusters> = this
