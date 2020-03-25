@@ -214,6 +214,11 @@ class ControlPlane private constructor(
             return this
         }
 
+        fun withSendSnapshotExecutor(executor: Executor): ControlPlaneBuilder {
+            sendSnapshotExecutor = executor
+            return this
+        }
+
         fun withMetrics(metrics: EnvoyControlMetrics): ControlPlaneBuilder {
             this.metrics = metrics
             return this
