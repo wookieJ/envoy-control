@@ -33,7 +33,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import reactor.core.publisher.Flux
 import reactor.core.scheduler.Schedulers
 import java.time.Duration
-import java.lang.RuntimeException
+import java.util.concurrent.Executors
 import java.util.function.Consumer
 
 class SnapshotUpdaterTest {
@@ -72,6 +72,11 @@ class SnapshotUpdaterTest {
         Locality.LOCAL, "zone"
     )
 
+    val sendSnapshotScheduler = ParallelSendSnapshotScheduler(
+        scheduler = Schedulers.fromExecutor(Executors.newFixedThreadPool(5)),
+        parallelism = 5
+    )
+
     @Test
     fun `should generate group snapshots`() {
         val cache = MockCache()
@@ -98,7 +103,8 @@ class SnapshotUpdaterTest {
             properties = SnapshotProperties().apply {
                 incomingPermissions.enabled = true
             },
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler,
             onGroupAdded = Flux.just(groups),
             meterRegistry = simpleMeterRegistry
         )
@@ -148,7 +154,8 @@ class SnapshotUpdaterTest {
             properties = SnapshotProperties().apply {
                 enabledCommunicationModes.ads = adsSupported; enabledCommunicationModes.xds = xdsSupported
             },
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler, // TODO: create helper function for creating snapshot-updater
             onGroupAdded = Flux.just(listOf()),
             meterRegistry = simpleMeterRegistry
         )
@@ -173,7 +180,8 @@ class SnapshotUpdaterTest {
         val updater = SnapshotUpdater(
             cache,
             properties = SnapshotProperties(),
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler,
             onGroupAdded = Flux.just(listOf()),
             meterRegistry = simpleMeterRegistry
         )
@@ -209,7 +217,8 @@ class SnapshotUpdaterTest {
         val updater = SnapshotUpdater(
                 cache,
                 properties = SnapshotProperties(),
-                scheduler = Schedulers.newSingle("update-snapshot"),
+                updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+                sendSnapshotScheduler = sendSnapshotScheduler,
                 onGroupAdded = Flux.just(),
                 meterRegistry = simpleMeterRegistry
         )
@@ -235,7 +244,8 @@ class SnapshotUpdaterTest {
             properties = SnapshotProperties().apply {
                 stateSampleDuration = Duration.ZERO
             },
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler,
             onGroupAdded = Flux.just(listOf()),
             meterRegistry = simpleMeterRegistry
         )
@@ -276,7 +286,8 @@ class SnapshotUpdaterTest {
             properties = SnapshotProperties().apply {
                 stateSampleDuration = Duration.ZERO
             },
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler,
             onGroupAdded = Flux.just(listOf()),
             meterRegistry = simpleMeterRegistry
         )
@@ -331,7 +342,8 @@ class SnapshotUpdaterTest {
                     "mock-", "regression-tests"
                 )
             },
-            scheduler = Schedulers.newSingle("update-snapshot"),
+            updateSnapshotScheduler = Schedulers.newSingle("update-snapshot"),
+            sendSnapshotScheduler = sendSnapshotScheduler,
             onGroupAdded = Flux.just(groups),
             meterRegistry = simpleMeterRegistry
         )

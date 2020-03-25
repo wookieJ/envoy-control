@@ -15,6 +15,10 @@ class ServerProperties {
      * Minimum size = 2, to work correctly with reactor operators merge and combineLatest
      */
     var snapshotUpdatePoolSize = 5
+    var snapshotSendScheduler = ExecutorProperties().apply {
+        type = ExecutorType.PARALLEL
+        parallelPoolSize = 10
+    }
     var snapshotCleanup = SnapshotCleanupProperties()
     var reportProtobufCacheMetrics = false
     var logFullRequest = false

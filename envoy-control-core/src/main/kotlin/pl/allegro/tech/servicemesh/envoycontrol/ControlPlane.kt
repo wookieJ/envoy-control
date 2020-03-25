@@ -21,6 +21,8 @@ import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.CompositeDiscov
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.LoggingDiscoveryServerCallbacks
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.MeteredConnectionsCallbacks
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
+import pl.allegro.tech.servicemesh.envoycontrol.snapshot.DirectSendSnapshotScheduler
+import pl.allegro.tech.servicemesh.envoycontrol.snapshot.ParallelSendSnapshotScheduler
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.SnapshotUpdater
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.listeners.filters.EnvoyHttpFilters
 import reactor.core.Disposable
@@ -73,6 +75,7 @@ class ControlPlane private constructor(
         var nioEventLoopExecutor: Executor? = null
         var executorGroup: ExecutorGroup? = null
         var updateSnapshotExecutor: Executor? = null
+        var sendSnapshotExecutor: Executor? = null
         var metrics: EnvoyControlMetrics = DefaultEnvoyControlMetrics(meterRegistry = meterRegistry)
         var envoyHttpFilters: EnvoyHttpFilters = EnvoyHttpFilters.emptyFilters
 
@@ -119,6 +122,20 @@ class ControlPlane private constructor(
                 )
             }
 
+            val snapshotSendProperties = properties.server.snapshotSendScheduler
+            if (sendSnapshotExecutor == null && snapshotSendProperties.type == ExecutorType.PARALLEL) {
+                sendSnapshotExecutor = Executors.newFixedThreadPool(
+                    properties.server.snapshotSendScheduler.parallelPoolSize,
+                    ThreadNamingThreadFactory("snapshot-send")
+                )
+            }
+            val sendSnapshotScheduler = sendSnapshotExecutor?.let {
+                ParallelSendSnapshotScheduler(
+                    scheduler = Schedulers.fromExecutor(it),
+                    parallelism = snapshotSendProperties.parallelPoolSize
+                )
+            } ?: DirectSendSnapshotScheduler
+
             val cache = SimpleCache(nodeGroup, properties.envoy.snapshot.shouldSendMissingEndpoints)
 
             val cleanupProperties = properties.server.snapshotCleanup
@@ -161,6 +178,7 @@ class ControlPlane private constructor(
                     cache,
                     properties.envoy.snapshot,
                     Schedulers.fromExecutor(updateSnapshotExecutor!!),
+                    sendSnapshotScheduler,
                     groupChangeWatcher.onGroupAdded(),
                     meterRegistry,
                     envoyHttpFilters
