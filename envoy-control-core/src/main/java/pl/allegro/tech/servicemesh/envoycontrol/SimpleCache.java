@@ -1,5 +1,6 @@
 package pl.allegro.tech.servicemesh.envoycontrol;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.protobuf.Message;
@@ -90,14 +91,6 @@ public class SimpleCache<T> implements SnapshotCache<T> {
         }
     }
 
-    public Watch createWatch(
-            boolean ads,
-            DiscoveryRequest request,
-            Set<String> knownResourceNames,
-            Consumer<Response> responseConsumer) {
-        return createWatch(ads, request, knownResourceNames, responseConsumer, false);
-    }
-
     /**
      * {@inheritDoc}
      */
@@ -139,12 +132,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
 
                         return watch;
                     }
-                } else if (request.getTypeUrl().equals(Resources.ENDPOINT_TYPE_URL) && hasClusterChanged) {
-                    LOGGER.info("cluster changed: sending {} [{}] from node {} for version {}",
-                            request.getTypeUrl(),
-                            String.join(", ", request.getResourceNamesList()),
-                            group,
-                            request.getVersionInfo());
+                } else if (hasClusterChanged && request.getTypeUrl().equals(Resources.ENDPOINT_TYPE_URL)) {
                     respond(watch, snapshot, group);
 
                     return watch;
@@ -239,6 +227,26 @@ public class SimpleCache<T> implements SnapshotCache<T> {
             return;
         }
 
+        // Responses should be in specific order and TYPE_URLS has a list of resources in the right order.
+        respondWithSpecificOrder(group, snapshot, status);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public StatusInfo statusInfo(T group) {
+        readLock.lock();
+
+        try {
+            return statuses.get(group);
+        } finally {
+            readLock.unlock();
+        }
+    }
+
+    @VisibleForTesting
+    protected void respondWithSpecificOrder(T group, Snapshot snapshot, CacheStatusInfo<T> status) {
         for (String typeUrl : Resources.TYPE_URLS) {
             status.watchesRemoveIf((id, watch) -> {
                 if (!watch.request().getTypeUrl().equals(typeUrl)) {
@@ -263,20 +271,6 @@ public class SimpleCache<T> implements SnapshotCache<T> {
                 // Do not discard the watch. The request version is the same as the snapshot version, so we wait to respond.
                 return false;
             });
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public StatusInfo statusInfo(T group) {
-        readLock.lock();
-
-        try {
-            return statuses.get(group);
-        } finally {
-            readLock.unlock();
         }
     }
 
