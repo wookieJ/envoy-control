@@ -175,7 +175,7 @@ class EgressProperties {
 }
 
 class CommonHttpProperties {
-    var idleTimeout: Duration = Duration.ofSeconds(120)
+    var idleTimeout: Duration = Duration.ofSeconds(55)
     var requestTimeout: Duration = Duration.ofSeconds(120)
     var circuitBreakers: CircuitBreakers = CircuitBreakers()
 }
