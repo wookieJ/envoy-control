@@ -4,6 +4,7 @@ import io.envoyproxy.controlplane.cache.Snapshot
 import io.envoyproxy.controlplane.cache.SnapshotCache
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController.Companion.debug
 import pl.allegro.tech.servicemesh.envoycontrol.groups.CommunicationMode.ADS
 import pl.allegro.tech.servicemesh.envoycontrol.groups.CommunicationMode.XDS
 import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
@@ -142,14 +143,14 @@ class SnapshotUpdater(
     }
 
     private fun updateSnapshotForGroup(group: Group, groupSnapshot: Snapshot): Boolean = try {
-        //logger.info("MFDEBUG: ONE GROUP: STARTED") // TODO: remove
+        debug("updateSnapshotForGroup: STARTED") // TODO: remove
         val setSnapshot = { cache.setSnapshot(group, groupSnapshot) }
         if (properties.metrics.cacheSetSnapshotEnabled) {
             meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record(setSnapshot)
         } else {
             setSnapshot()
         }
-        //logger.info("MFDEBUG: ONE GROUP: ENDED") // TODO: remove
+        debug("updateSnapshotForGroup: ENDED") // TODO: remove
         true
     } catch (e: Throwable) {
         meterRegistry.counter("snapshot-updater.services.${group.serviceName}.updates.errors").increment()
@@ -158,7 +159,7 @@ class SnapshotUpdater(
     }
 
     private fun updateSnapshotForGroups(groups: Collection<Group>, result: UpdateResult): Mono<UpdateResult> {
-        //logger.info("MFDEBUG: MANY GROUPS: STARTED") // TODO: remove
+        debug("updateSnapshotForGroups: STARTED") // TODO: remove
         val timer = Timer.start()
         versions.retainGroups(cache.groups())
 
@@ -183,7 +184,7 @@ class SnapshotUpdater(
 
         return sendResults.then(Mono.fromCallable {
             timer.stop(meterRegistry.timer("snapshot-updater.update-snapshot-for-groups.time"))
-            //logger.info("MFDEBUG: MANY GROUPS: ENDED") // TODO: remove
+            debug("updateSnapshotForGroups: ENDED") // TODO: remove
             result
         })
     }

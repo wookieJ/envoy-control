@@ -41,7 +41,7 @@ class CompositeDiscoveryServerCallbacks(
     }
 
     private fun runCallbacks(fn: (DiscoveryServerCallbacks) -> Unit) {
-        val exceptions = mutableListOf<Exception>()
+        val exceptions = mutableListOf<Exception>() // TODO(maybe): allocation for every response
         for (callback in delegate) {
             try {
                 fn(callback)

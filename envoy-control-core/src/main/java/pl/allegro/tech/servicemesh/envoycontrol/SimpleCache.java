@@ -17,6 +17,7 @@ import io.envoyproxy.envoy.api.v2.ClusterLoadAssignment;
 import io.envoyproxy.envoy.api.v2.DiscoveryRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.util.Collection;
@@ -215,6 +216,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
      */
     @Override
     public void setSnapshot(T group, Snapshot snapshot) {
+        DebugController.Companion.debug("SimpleCache.setSnapshot: STARTED", group);
         // we take a writeLock to prevent watches from being created while we update the snapshot
         CacheStatusInfo<T> status;
         writeLock.lock();
@@ -232,6 +234,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
 
         // Responses should be in specific order and TYPE_URLS has a list of resources in the right order.
         respondWithSpecificOrder(group, snapshot, status);
+        DebugController.Companion.debug("SimpleCache.setSnapshot: ENDED", group);
     }
 
     /**
@@ -289,6 +292,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
     }
 
     private boolean respond(Watch watch, Snapshot snapshot, T group) {
+        DebugController.Companion.debug("SimpleCache.respond: STARTED", group); // TODO: remove
         Map<String, ? extends Message> snapshotResources = snapshot.resources(watch.request().getTypeUrl());
         Map<String, ClusterLoadAssignment> snapshotForMissingResources = Collections.emptyMap();
 
@@ -332,6 +336,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
                             String.join(", ", watch.request().getResourceNamesList()),
                             String.join(", ", missingNames));
 
+                    DebugController.Companion.debug("SimpleCache.respond: ENDED (not responding)", group); // TODO: remove
                     return false;
                 }
             }
@@ -359,7 +364,9 @@ public class SimpleCache<T> implements SnapshotCache<T> {
         }
 
         try {
+            // TODO: czy DiscoveryRequestStreamObserver send jest blocking? Tzn. czy czeka aż response się wyśle
             watch.respond(response);
+            DebugController.Companion.debug("SimpleCache.respond: ENDED", group); // TODO: remove
             return true;
         } catch (WatchCancelledException e) {
             LOGGER.error(
@@ -369,7 +376,7 @@ public class SimpleCache<T> implements SnapshotCache<T> {
                     watch.request().getVersionInfo(),
                     version);
         }
-
+        DebugController.Companion.debug("SimpleCache.respond: ENDED (error)", group); // TODO: remove
         return false;
     }
 }

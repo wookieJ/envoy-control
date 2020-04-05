@@ -127,7 +127,8 @@ abstract class EnvoyControlTestConfiguration : BaseEnvoyTest() {
             localServiceContainer.stop()
         }
 
-        private fun createEnvoyContainer(
+        @JvmStatic
+        protected fun createEnvoyContainer(
             instancesInSameDc: Boolean,
             envoyConfig: EnvoyConfigFile,
             envoyConnectGrpcPort: Int?,

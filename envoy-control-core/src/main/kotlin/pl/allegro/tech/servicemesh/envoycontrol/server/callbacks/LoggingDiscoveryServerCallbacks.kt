@@ -4,6 +4,7 @@ import io.envoyproxy.controlplane.server.DiscoveryServerCallbacks
 import io.envoyproxy.envoy.api.v2.DiscoveryRequest
 import io.envoyproxy.envoy.api.v2.DiscoveryResponse
 import org.slf4j.LoggerFactory
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController
 
 class LoggingDiscoveryServerCallbacks(
     private val logFullRequest: Boolean,
@@ -32,6 +33,7 @@ class LoggingDiscoveryServerCallbacks(
         request: DiscoveryRequest?,
         response: DiscoveryResponse?
     ) {
+        DebugController.delayCallbackOnStreamResponse() // TODO: remove
         logger.debug(
             "onStreamResponse streamId: {}, request: {}, response: {}",
             streamId,

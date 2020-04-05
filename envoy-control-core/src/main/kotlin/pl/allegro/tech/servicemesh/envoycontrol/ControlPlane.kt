@@ -90,11 +90,11 @@ class ControlPlane private constructor(
                     properties.server.serverPoolSize,
                     properties.server.serverPoolKeepAlive.toMillis(), TimeUnit.MILLISECONDS,
                     LinkedBlockingQueue<Runnable>(),
-                    ThreadNamingThreadFactory("grpc-server-worker")
+                    ThreadNamingThreadFactory("grpc-server-worker")  // TODO: na tym poolu są respondy natychmiastowe
                 )
             }
 
-            if (nioEventLoopExecutor == null) {
+            if (nioEventLoopExecutor == null) { // TODO: check what we set here
                 // unbounded executor - netty will only use configured number of threads
                 // (by nioEventLoopThreadCount property or default netty value: <number of CPUs> * 2)
                 nioEventLoopExecutor = Executors.newCachedThreadPool(
@@ -110,7 +110,7 @@ class ControlPlane private constructor(
                             properties.server.executorGroup.parallelPoolSize,
                             ThreadNamingThreadFactory("discovery-responses-executor")
                         )
-                        ExecutorGroup { executor }
+                        ExecutorGroup { executor }   // TODO: implement correct parallel executor group (return one threaded executors)
                     }
                 }
             }
@@ -253,7 +253,7 @@ class ControlPlane private constructor(
                     nioEventLoopExecutor
                 )
             )
-            .executor(grpcServerExecutor)
+            .executor(grpcServerExecutor) // TODO: check what we set here
             .keepAliveTime(config.netty.keepAliveTime.toMillis(), TimeUnit.MILLISECONDS)
             .permitKeepAliveTime(config.netty.permitKeepAliveTime.toMillis(), TimeUnit.MILLISECONDS)
             .permitKeepAliveWithoutCalls(config.netty.permitKeepAliveWithoutCalls)
