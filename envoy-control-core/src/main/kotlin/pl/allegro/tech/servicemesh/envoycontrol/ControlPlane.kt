@@ -10,6 +10,7 @@ import io.grpc.Server
 import io.grpc.netty.NettyServerBuilder
 import io.micrometer.core.instrument.MeterRegistry
 import io.netty.channel.nio.NioEventLoopGroup
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController
 import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
 import pl.allegro.tech.servicemesh.envoycontrol.groups.GroupChangeWatcher
 import pl.allegro.tech.servicemesh.envoycontrol.groups.MetadataNodeGroup
@@ -130,6 +131,8 @@ class ControlPlane private constructor(
                     }
                 }
             }
+
+            executorGroup = DebugController.trackExecutorGroup(executorGroup)  // TODO: remove
 
             if (updateSnapshotExecutor == null) {
                 updateSnapshotExecutor = Executors.newFixedThreadPool(

@@ -174,6 +174,8 @@ class SnapshotUpdater(
             getSnapshotForGroup(group, result)?.let { (group to it) }
         }
 
+        val sendSnapshotScheduler = DebugController.sendSnapshotScheduler(sendSnapshotScheduler)  // TODO: remove
+
         val sendResults = when (sendSnapshotScheduler) {
             is DirectSendSnapshotScheduler -> {
                 Flux.fromIterable(snapshots)
