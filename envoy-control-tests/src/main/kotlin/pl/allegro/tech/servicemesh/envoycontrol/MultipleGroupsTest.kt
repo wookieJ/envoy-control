@@ -23,7 +23,11 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
     data class TestSetup(
         val snapshotSendSchedulerType: ExecutorType,
         val snapshotSendSchedulerParallelPoolSize: Int,
-        val onStreamResponseDelayMs: Long = 0L
+        val discoveryResponsesSchedulerType: ExecutorType = ExecutorType.DIRECT,
+        val discoveryResponsesParallelPoolSize: Int = 0,
+        val discoveryResponsesQueueSize: Int = 0,
+        val onStreamResponseDelayMs: Long = 0L,
+        val oldSequentialMode: Boolean = false
     )
 
     companion object {
@@ -51,12 +55,47 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
             onStreamResponseDelayMs = 2000
         )
 
-        val testSetup = testSetupParallel3OnStreamResponseDelay
+        val testSetupOldSequential = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            oldSequentialMode = true
+        )
+
+        val testSetupOldSequentialOnStreamResponseDelay = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            oldSequentialMode = true,
+            onStreamResponseDelayMs = 2000
+        )
+
+        val testSetupOldSequentialWithDiscoveryResponsesParallel = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            oldSequentialMode = true,
+            discoveryResponsesSchedulerType = ExecutorType.PARALLEL,
+            discoveryResponsesParallelPoolSize = 3,
+            discoveryResponsesQueueSize = 3
+        )
+
+        val testSetupOldSequentialWithDiscoveryResponsesParallelOnStreamResponseDelay = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            oldSequentialMode = true,
+            discoveryResponsesSchedulerType = ExecutorType.PARALLEL,
+            discoveryResponsesParallelPoolSize = 3,
+            discoveryResponsesQueueSize = 3,
+            onStreamResponseDelayMs = 2000
+        )
+
+        val testSetup = testSetupOldSequential
 
         protected val properties = mapOf(
             "envoy-control.envoy.snapshot.outgoing-permissions.servicesAllowedToUseWildcard" to "test-service",
             "envoy-control.server.snapshot-send-scheduler.type" to testSetup.snapshotSendSchedulerType.name,
-            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to testSetup.snapshotSendSchedulerParallelPoolSize
+            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to testSetup.snapshotSendSchedulerParallelPoolSize,
+            "envoy-control.server.executor-group.type" to testSetup.discoveryResponsesSchedulerType.name,
+            "envoy-control.server.executor-group.parallel-pool-size" to testSetup.discoveryResponsesParallelPoolSize,
+            "envoy-control.server.executor-group.queue-size" to testSetup.discoveryResponsesQueueSize
         )
 
         @JvmStatic
@@ -66,6 +105,10 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
 
             if (testSetup.onStreamResponseDelayMs > 0) {
                 DebugController.callbackOnStreamResponseDelayMs = testSetup.onStreamResponseDelayMs
+            }
+
+            if (testSetup.oldSequentialMode) {
+                DebugController.oldSequentialMode = true
             }
 
             setup(

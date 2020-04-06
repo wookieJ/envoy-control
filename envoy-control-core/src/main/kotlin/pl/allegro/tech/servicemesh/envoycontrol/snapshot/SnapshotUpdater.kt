@@ -4,6 +4,7 @@ import io.envoyproxy.controlplane.cache.Snapshot
 import io.envoyproxy.controlplane.cache.SnapshotCache
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController
 import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController.Companion.debug
 import pl.allegro.tech.servicemesh.envoycontrol.groups.CommunicationMode.ADS
 import pl.allegro.tech.servicemesh.envoycontrol.groups.CommunicationMode.XDS
@@ -80,11 +81,17 @@ class SnapshotUpdater(
                         result.groups
                     }
 
-                    if (result.adsSnapshot != null || result.xdsSnapshot != null) {
-                        updateSnapshotForGroups(groups, result)
+                    if (DebugController.oldSequentialMode) {
+                        updateSnapshotForGroupsOldSequential(groups, result)
+                        Mono.just(result)
                     } else {
-                        Mono.empty()
+                        if (result.adsSnapshot != null || result.xdsSnapshot != null) {
+                            updateSnapshotForGroups(groups, result)
+                        } else {
+                            Mono.empty()
+                        }
                     }
+
                 }
     }
 
@@ -188,6 +195,42 @@ class SnapshotUpdater(
             result
         })
     }
+
+    // TODO: remove
+    private fun updateSnapshotForGroupOldSequential(group: Group, globalSnapshot: GlobalSnapshot) {
+        try {
+            val groupSnapshot = snapshotFactory.getSnapshotForGroup(group, globalSnapshot)
+            val setSnapshot = { cache.setSnapshot(group, groupSnapshot) }
+            if (properties.metrics.cacheSetSnapshotEnabled) {
+                meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record(setSnapshot)
+            } else {
+                setSnapshot()
+            }
+        } catch (e: Throwable) {
+            meterRegistry.counter("snapshot-updater.services.${group.serviceName}.updates.errors").increment()
+            logger.error("Unable to create snapshot for group ${group.serviceName}", e)
+        }
+    }
+
+    // TODO: remove
+    private fun updateSnapshotForGroupsOldSequential(groups: Collection<Group>, result: UpdateResult) = meterRegistry
+        .timer("snapshot-updater.update-snapshot-for-groups.time").record {
+            debug("updateSnapshotForGroupsOLD: STARTED") // TODO: remove
+            versions.retainGroups(cache.groups())
+            groups.forEach { group ->
+                if (result.adsSnapshot != null && group.communicationMode == ADS) {
+                    updateSnapshotForGroupOldSequential(group, result.adsSnapshot)
+                } else if (result.xdsSnapshot != null && group.communicationMode == XDS) {
+                    updateSnapshotForGroupOldSequential(group, result.xdsSnapshot)
+                } else {
+                    meterRegistry.counter("snapshot-updater.communication-mode.errors").increment()
+                    logger.error("Requested snapshot for ${group.communicationMode.name} mode, but it is not here. " +
+                        "Handling Envoy with not supported communication mode should have been rejected before." +
+                        " Please report this to EC developers.")
+                }
+            }
+            debug("updateSnapshotForGroupsOLD: ENDED") // TODO: remove
+        }
 
     private fun getSnapshotForGroup(group: Group, result: UpdateResult): Snapshot? {
         return if (result.adsSnapshot != null && group.communicationMode == ADS) {

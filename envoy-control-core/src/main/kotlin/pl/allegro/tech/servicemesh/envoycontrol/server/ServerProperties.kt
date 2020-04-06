@@ -32,6 +32,7 @@ enum class ExecutorType {
 class ExecutorProperties {
     var type = ExecutorType.DIRECT
     var parallelPoolSize = 4
+    var queueSize = 1
 }
 
 class NettyProperties {

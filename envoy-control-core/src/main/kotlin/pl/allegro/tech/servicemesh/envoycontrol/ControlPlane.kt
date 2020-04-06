@@ -16,6 +16,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.groups.MetadataNodeGroup
 import pl.allegro.tech.servicemesh.envoycontrol.groups.NodeMetadataValidator
 import pl.allegro.tech.servicemesh.envoycontrol.server.CachedProtoResourcesSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.server.ExecutorType
+import pl.allegro.tech.servicemesh.envoycontrol.server.SequentialExecutorGroup
 import pl.allegro.tech.servicemesh.envoycontrol.server.ServerProperties
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.CompositeDiscoveryServerCallbacks
 import pl.allegro.tech.servicemesh.envoycontrol.server.callbacks.LoggingDiscoveryServerCallbacks
@@ -29,6 +30,7 @@ import reactor.core.Disposable
 import reactor.core.publisher.Flux
 import reactor.core.scheduler.Schedulers
 import java.time.Clock
+import java.util.concurrent.BlockingQueue
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -106,11 +108,25 @@ class ControlPlane private constructor(
                 executorGroup = when (properties.server.executorGroup.type) {
                     ExecutorType.DIRECT -> DefaultExecutorGroup()
                     ExecutorType.PARALLEL -> {
-                        val executor = Executors.newFixedThreadPool(
+
+                        class ThreadBlockingQueue<T>(private val queue: BlockingQueue<T>) : BlockingQueue<T> by queue {
+                            override fun offer(e: T): Boolean {
+                                queue.put(e)
+                                return true
+                            }
+                        }
+
+                        val singleThreadedExecutorFactory = { i: Int ->
+                            ThreadPoolExecutor(1, 1,
+                                0L, TimeUnit.MILLISECONDS,
+                                ThreadBlockingQueue(LinkedBlockingQueue<Runnable>(properties.server.executorGroup.queueSize)),
+                                ThreadNamingThreadFactory("discovery-responses-executor-$i")
+                            )
+                        }
+                        SequentialExecutorGroup(
                             properties.server.executorGroup.parallelPoolSize,
-                            ThreadNamingThreadFactory("discovery-responses-executor")
+                            singleThreadedExecutorFactory
                         )
-                        ExecutorGroup { executor }   // TODO: implement correct parallel executor group (return one threaded executors)
                     }
                 }
             }

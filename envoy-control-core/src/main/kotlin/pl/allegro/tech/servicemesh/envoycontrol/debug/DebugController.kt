@@ -12,6 +12,9 @@ open class DebugController {
     companion object {
         val logger by logger()
         var callbackOnStreamResponseDelayMs: Long = 0
+        var oldSequentialMode = false
+
+        var executorGroupLimit = 1000
 
         fun debug(msg: String) {
             if (logger.isDebugEnabled) {
