@@ -27,7 +27,9 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
         val discoveryResponsesParallelPoolSize: Int = 0,
         val discoveryResponsesQueueSize: Int = 0,
         val onStreamResponseDelayMs: Long = 0L,
-        val oldSequentialMode: Boolean = false
+        val oldSequentialMode: Boolean = false,
+        val parallelizeGetSnapshotForGroup: Boolean = false,
+        val alternativeProtoResourcesSerializer: Boolean = false
     )
 
     companion object {
@@ -87,7 +89,20 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
             onStreamResponseDelayMs = 2000
         )
 
-        val testSetup = testSetupOldSequential
+        val testSetupParallel3ParallizeGetSnapshot = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            parallelizeGetSnapshotForGroup = true
+        )
+
+        val testSetupOldSequentialAlternativeProtoSerializer = TestSetup(
+            snapshotSendSchedulerType = ExecutorType.PARALLEL,
+            snapshotSendSchedulerParallelPoolSize = 3,
+            oldSequentialMode = true,
+            alternativeProtoResourcesSerializer = true
+        )
+
+        val testSetup = testSetupOldSequentialAlternativeProtoSerializer
 
         protected val properties = mapOf(
             "envoy-control.envoy.snapshot.outgoing-permissions.servicesAllowedToUseWildcard" to "test-service",
@@ -107,9 +122,10 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
                 DebugController.callbackOnStreamResponseDelayMs = testSetup.onStreamResponseDelayMs
             }
 
-            if (testSetup.oldSequentialMode) {
-                DebugController.oldSequentialMode = true
-            }
+            DebugController.oldSequentialMode = testSetup.oldSequentialMode
+            DebugController.parallelizeGetSnapshotForGroup = testSetup.parallelizeGetSnapshotForGroup
+            DebugController.alternativeProtoResourcesSerializer = testSetup.alternativeProtoResourcesSerializer
+
 
             setup(
                 appFactoryForEc1 = { consulPort ->

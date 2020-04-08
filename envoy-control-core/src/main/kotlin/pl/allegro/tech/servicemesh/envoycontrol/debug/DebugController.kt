@@ -2,7 +2,10 @@ package pl.allegro.tech.servicemesh.envoycontrol.debug
 
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import com.google.protobuf.Any
+import com.google.protobuf.Message
 import io.envoyproxy.controlplane.server.ExecutorGroup
+import io.envoyproxy.controlplane.server.serializer.ProtoResourcesSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.logger
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.SendSnapshotScheduler
 import java.lang.Thread.sleep
@@ -45,6 +48,8 @@ open class DebugController {
 
         var oldSequentialMode = false
         var sendSnapshotScheduler: SendSnapshotScheduler? = null
+        var parallelizeGetSnapshotForGroup = false
+        var alternativeProtoResourcesSerializer = false
 
 
         fun sendSnapshotScheduler(original: SendSnapshotScheduler): SendSnapshotScheduler {
@@ -60,6 +65,29 @@ open class DebugController {
             return ExecutorGroup {
                 executorGroup?.next() ?: original?.next()
             }
+        }
+    }
+
+}
+
+class DebugProtoResourcesSerializer(
+    private val defaultSerializer: ProtoResourcesSerializer,
+    private val alternativeSerializer: ProtoResourcesSerializer
+) : ProtoResourcesSerializer {
+
+    override fun serialize(resources: MutableCollection<out Message>?): MutableCollection<Any> {
+        return if (DebugController.alternativeProtoResourcesSerializer) {
+            alternativeSerializer.serialize(resources)
+        } else {
+            defaultSerializer.serialize(resources)
+        }
+    }
+
+    override fun serialize(resource: Message?): Any {
+        return if (DebugController.alternativeProtoResourcesSerializer) {
+            alternativeSerializer.serialize(resource)
+        } else {
+            defaultSerializer.serialize(resource)
         }
     }
 

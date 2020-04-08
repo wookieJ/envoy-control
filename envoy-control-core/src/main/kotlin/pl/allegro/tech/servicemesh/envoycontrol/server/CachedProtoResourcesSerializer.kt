@@ -40,6 +40,10 @@ internal class CachedProtoResourcesSerializer(
     }
 
     private fun getResources(resources: MutableCollection<out Message>): MutableCollection<Any> {
+        // TODO: this is is not effective, because resources is an unknown collection, and we do not know if equals()
+        // is implemented properly on that collection. Probably it is not, because this probably be HashMap.Values collection,
+        // which doesn't implement equals().
+        // We should create a Set from the collection, or cache individual entries, just like in JCP version of CachedProtoResourcesSerializer
         return cache.get(resources) {
             resources.asSequence()
                 .map { Any.pack(it) }

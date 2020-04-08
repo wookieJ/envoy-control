@@ -80,18 +80,16 @@ class SnapshotUpdater(
                     } else {
                         result.groups
                     }
-
-                    if (DebugController.oldSequentialMode) {
-                        updateSnapshotForGroupsOldSequential(groups, result)
-                        Mono.just(result)
-                    } else {
-                        if (result.adsSnapshot != null || result.xdsSnapshot != null) {
-                            updateSnapshotForGroups(groups, result)
+                    if (result.adsSnapshot != null || result.xdsSnapshot != null) {
+                        if (DebugController.oldSequentialMode) {
+                            updateSnapshotForGroupsOldSequential(groups, result)
+                            Mono.just(result)
                         } else {
-                            Mono.empty()
+                            updateSnapshotForGroups(groups, result)
                         }
+                    } else {
+                        Mono.empty()
                     }
-
                 }
     }
 
@@ -170,24 +168,38 @@ class SnapshotUpdater(
         val timer = Timer.start()
         versions.retainGroups(cache.groups())
 
-        val snapshots = groups.mapNotNull { group ->
-            getSnapshotForGroup(group, result)?.let { (group to it) }
-        }
-
         val sendSnapshotScheduler = DebugController.sendSnapshotScheduler(sendSnapshotScheduler)  // TODO: remove
 
         val sendResults = when (sendSnapshotScheduler) {
             is DirectSendSnapshotScheduler -> {
+                val snapshots = groups.mapNotNull { group ->
+                    getSnapshotForGroup(group, result)?.let { (group to it) }
+                }
                 Flux.fromIterable(snapshots)
                     .map { (group, snapshot) -> updateSnapshotForGroup(group, snapshot) }
             }
             // TODO: test with multiple envoys (groups)
             is ParallelSendSnapshotScheduler -> {
-                Flux.fromIterable(snapshots)
-                    .parallel(sendSnapshotScheduler.parallelism)
-                    .runOn(sendSnapshotScheduler.scheduler)
-                    .map { (group, snapshot) -> updateSnapshotForGroup(group, snapshot) }
-                    .sequential()
+                if (DebugController.parallelizeGetSnapshotForGroup) {
+                    Flux.fromIterable(groups)
+                        .parallel(sendSnapshotScheduler.parallelism)
+                        .runOn(sendSnapshotScheduler.scheduler)
+                        .map { group ->
+                            getSnapshotForGroup(group, result)
+                                ?.let { updateSnapshotForGroup(group, it) }
+                                ?: false
+                        }
+                        .sequential()
+                } else {
+                    val snapshots = groups.mapNotNull { group ->
+                        getSnapshotForGroup(group, result)?.let { (group to it) }
+                    }
+                    Flux.fromIterable(snapshots)
+                        .parallel(sendSnapshotScheduler.parallelism)
+                        .runOn(sendSnapshotScheduler.scheduler)
+                        .map { (group, snapshot) -> updateSnapshotForGroup(group, snapshot) }
+                        .sequential()
+                }
             }
         }
 

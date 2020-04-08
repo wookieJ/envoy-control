@@ -11,6 +11,7 @@ import io.grpc.netty.NettyServerBuilder
 import io.micrometer.core.instrument.MeterRegistry
 import io.netty.channel.nio.NioEventLoopGroup
 import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugProtoResourcesSerializer
 import pl.allegro.tech.servicemesh.envoycontrol.groups.Group
 import pl.allegro.tech.servicemesh.envoycontrol.groups.GroupChangeWatcher
 import pl.allegro.tech.servicemesh.envoycontrol.groups.MetadataNodeGroup
@@ -188,7 +189,10 @@ class ControlPlane private constructor(
                 ),
                 groupChangeWatcher,
                 executorGroup,
-                CachedProtoResourcesSerializer(meterRegistry, properties.server.reportProtobufCacheMetrics)
+                DebugProtoResourcesSerializer(
+                    defaultSerializer = CachedProtoResourcesSerializer(meterRegistry, properties.server.reportProtobufCacheMetrics),
+                    alternativeSerializer = io.envoyproxy.controlplane.server.serializer.CachedProtoResourcesSerializer()
+                )
             )
 
             return ControlPlane(
