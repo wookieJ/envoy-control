@@ -1,5 +1,6 @@
 package pl.allegro.tech.servicemesh.envoycontrol.config
 
+import ch.qos.logback.classic.Level
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -14,6 +15,7 @@ import org.springframework.boot.actuate.health.Status
 import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.http.HttpStatus
 import pl.allegro.tech.servicemesh.envoycontrol.EnvoyControl
+import pl.allegro.tech.servicemesh.envoycontrol.debug.DebugController
 import pl.allegro.tech.servicemesh.envoycontrol.logger
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.debug.Versions
@@ -58,8 +60,63 @@ class EnvoyControlRunnerTestApp(
         "envoy-control.envoy.snapshot.load-balancing.policy" to "ROUND_ROBIN"
     )
 
+    // TODO: remove
+    fun debugMode(properties: Map<String, Any>): Map<String, Any> {
+        val debugProperties = debugModeDirect()
+        DebugController.setLoggerLevel(Level.DEBUG)
+        return properties + debugProperties
+    }
+
+    // ALL TESTS PASSED
+    fun debugModeOldSequential(): Map<String, Any> {
+        DebugController.oldSequentialMode = true
+        DebugController.parallelizeGetSnapshotForGroup = false
+        DebugController.alternativeProtoResourcesSerializer = false
+
+        return mapOf(
+            "envoy-control.server.snapshot-send-scheduler.type" to "DIRECT",
+            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to 1
+        )
+    }
+
+    // ALL TEST PASSED
+    fun debugModeOldSequentialAlternativeProtoSerializer(): Map<String, Any> {
+        DebugController.oldSequentialMode = true
+        DebugController.parallelizeGetSnapshotForGroup = false
+        DebugController.alternativeProtoResourcesSerializer = true
+
+        return mapOf(
+            "envoy-control.server.snapshot-send-scheduler.type" to "DIRECT",
+            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to 1
+        )
+    }
+
+    // ALL TESTS PASSED
+    fun debugModeParallel8(): Map<String, Any> {
+        DebugController.oldSequentialMode = false
+        DebugController.parallelizeGetSnapshotForGroup = false
+        DebugController.alternativeProtoResourcesSerializer = false
+
+        return mapOf(
+            "envoy-control.server.snapshot-send-scheduler.type" to "PARALLEL",
+            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to 8
+        )
+    }
+
+    // ALL TESTS PASSED
+    fun debugModeDirect(): Map<String, Any> {
+        DebugController.oldSequentialMode = false
+        DebugController.parallelizeGetSnapshotForGroup = false
+        DebugController.alternativeProtoResourcesSerializer = false
+
+        return mapOf(
+            "envoy-control.server.snapshot-send-scheduler.type" to "DIRECT",
+            "envoy-control.server.snapshot-send-scheduler.parallel-pool-size" to 1
+        )
+    }
+
     override fun run() {
-        app = SpringApplicationBuilder(EnvoyControl::class.java).properties(baseProperties + properties)
+        app = SpringApplicationBuilder(EnvoyControl::class.java).properties(debugMode(baseProperties + properties))
         app.run("--server.port=$appPort", "-e test")
         logger.info("starting EC on port $appPort, grpc: $grpcPort, consul: $consulPort")
     }

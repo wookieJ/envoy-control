@@ -56,7 +56,7 @@ class EnvoyContainer(
             Integer.toString(envoyControl2XdsPort),
             CONFIG_DEST,
             localServiceIp,
-            "-l", "debug"
+            "-l", "info" // TODO: revert
         )
     }
 

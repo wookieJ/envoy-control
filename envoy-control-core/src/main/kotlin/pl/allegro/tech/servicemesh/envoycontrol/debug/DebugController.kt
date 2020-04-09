@@ -67,7 +67,6 @@ open class DebugController {
             }
         }
     }
-
 }
 
 class DebugProtoResourcesSerializer(

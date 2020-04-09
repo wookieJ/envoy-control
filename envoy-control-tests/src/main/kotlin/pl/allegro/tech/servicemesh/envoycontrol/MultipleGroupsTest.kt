@@ -5,7 +5,6 @@ import io.micrometer.core.instrument.Metrics.globalRegistry
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.fail
 import pl.allegro.tech.servicemesh.envoycontrol.config.Ads
 import pl.allegro.tech.servicemesh.envoycontrol.config.AdsAllDependencies
@@ -169,7 +168,7 @@ open class MultipleGroupsTest : EnvoyControlTestConfiguration() {
         }
     }
 
-    @Test
+    //@Test
     fun should() {
 
         registerService(name = "echo")

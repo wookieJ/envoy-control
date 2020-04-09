@@ -36,6 +36,11 @@ test {
     }
     maxParallelForks = 1
     testClassesDirs = project.sourceSets.main.output.classesDirs
+    testLogging {
+        events "passed", "skipped", "failed"
+        exceptionFormat = 'full'
+        showStandardStreams = true  // TODO: remove
+    }
 }
 
 task reliabilityTest(type: Test) {
