@@ -110,25 +110,15 @@ class ControlPlane private constructor(
                 executorGroup = when (properties.server.executorGroup.type) {
                     ExecutorType.DIRECT -> DefaultExecutorGroup()
                     ExecutorType.PARALLEL -> {
-
-                        class ThreadBlockingQueue<T>(private val queue: BlockingQueue<T>) : BlockingQueue<T> by queue {
-                            override fun offer(e: T): Boolean {
-                                queue.put(e)
-                                return true
-                            }
-                        }
-
-                        val singleThreadedExecutorFactory = { i: Int ->
-                            ThreadPoolExecutor(1, 1,
-                                0L, TimeUnit.MILLISECONDS,
-                                ThreadBlockingQueue(LinkedBlockingQueue<Runnable>(properties.server.executorGroup.queueSize)),
-                                ThreadNamingThreadFactory("discovery-responses-executor-$i")
-                            )
-                        }
-                        SequentialExecutorGroup(
+                        // TODO(https://github.com/allegro/envoy-control/issues/103) this implementation of parallel
+                        //   executor group is invalid, because it may lead to sending XDS responses out of order for
+                        //   given DiscoveryRequestStreamObserver. We should switch to multiple, single-threaded
+                        //   ThreadPoolExecutors. More info in linked task.
+                        val executor = Executors.newFixedThreadPool(
                             properties.server.executorGroup.parallelPoolSize,
-                            singleThreadedExecutorFactory
+                            ThreadNamingThreadFactory("discovery-responses-executor")
                         )
+                        ExecutorGroup { executor }
                     }
                 }
             }

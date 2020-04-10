@@ -26,7 +26,7 @@ class SnapshotProperties {
 }
 
 class MetricsProperties {
-    var cacheSetSnapshotEnabled = false
+    var cacheSetSnapshot = false
 }
 
 class ListenersFactoryProperties {

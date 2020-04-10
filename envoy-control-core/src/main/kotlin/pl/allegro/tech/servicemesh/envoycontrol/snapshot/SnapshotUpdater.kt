@@ -15,6 +15,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.snapshot.listeners.EnvoyListener
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.listeners.filters.EnvoyHttpFilters
 import pl.allegro.tech.servicemesh.envoycontrol.snapshot.routing.ServiceTagMetadataGenerator
 import pl.allegro.tech.servicemesh.envoycontrol.utils.measureBuffer
+import pl.allegro.tech.servicemesh.envoycontrol.utils.noopTimer
 import pl.allegro.tech.servicemesh.envoycontrol.utils.onBackpressureLatestMeasured
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -147,10 +148,16 @@ class SnapshotUpdater(
                 }
     }
 
+    private fun snapshotTimer(serviceName: String) = if (properties.metrics.cacheSetSnapshot) {
+        meterRegistry.timer("snapshot-updater.set-snapshot.$serviceName.time")
+    } else {
+        noopTimer
+    }
+
     private fun updateSnapshotForGroup(group: Group, groupSnapshot: Snapshot): Boolean = try {
         debug("updateSnapshotForGroup: STARTED") // TODO: remove
         val setSnapshot = { cache.setSnapshot(group, groupSnapshot) }
-        if (properties.metrics.cacheSetSnapshotEnabled) {
+        if (properties.metrics.cacheSetSnapshot) {
             meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record(setSnapshot)
         } else {
             setSnapshot()
@@ -215,7 +222,7 @@ class SnapshotUpdater(
         try {
             val groupSnapshot = snapshotFactory.getSnapshotForGroup(group, globalSnapshot)
             val setSnapshot = { cache.setSnapshot(group, groupSnapshot) }
-            if (properties.metrics.cacheSetSnapshotEnabled) {
+            if (properties.metrics.cacheSetSnapshot) {
                 meterRegistry.timer("snapshot-updater.set-snapshot.${group.serviceName}.time").record(setSnapshot)
             } else {
                 setSnapshot()
@@ -225,6 +232,8 @@ class SnapshotUpdater(
             logger.error("Unable to create snapshot for group ${group.serviceName}", e)
         }
     }
+
+    private val updateSnapshotForGroupsTimer = meterRegistry.timer("snapshot-updater.update-snapshot-for-groups.time")
 
     // TODO: remove
     private fun updateSnapshotForGroupsOldSequential(groups: Collection<Group>, result: UpdateResult) = meterRegistry
@@ -242,6 +251,7 @@ class SnapshotUpdater(
                         "Handling Envoy with not supported communication mode should have been rejected before." +
                         " Please report this to EC developers.")
                 }
+
             }
             debug("updateSnapshotForGroupsOLD: ENDED") // TODO: remove
         }
