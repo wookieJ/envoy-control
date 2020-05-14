@@ -1,8 +1,7 @@
 package pl.allegro.tech.servicemesh.envoycontrol.synchronization
 
 import io.micrometer.core.instrument.MeterRegistry
-import pl.allegro.tech.servicemesh.envoycontrol.services.MultiClusterState
-import pl.allegro.tech.servicemesh.envoycontrol.services.MultiClusterState.Companion.toMultiClusterState
+import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServiceChanges
 import pl.allegro.tech.servicemesh.envoycontrol.utils.logSuppressedError
 import pl.allegro.tech.servicemesh.envoycontrol.utils.measureBuffer
@@ -17,8 +16,9 @@ class GlobalServiceChanges(
 ) {
     private val scheduler = Schedulers.newElastic("global-service-changes-combinator")
 
-    fun combined(): Flux<MultiClusterState> {
-        val serviceStatesStreams: List<Flux<MultiClusterState>> = serviceChanges.map { it.stream() }
+    fun combined(): Flux<List<LocalityAwareServicesState>> {
+        // TODO(dj): #110 List<Flux<List<X>>> needs to look like domain oriented code
+        val serviceStatesStreams: List<Flux<List<LocalityAwareServicesState>>> = serviceChanges.map { it.stream() }
 
         if (properties.combineServiceChangesExperimentalFlow) {
             return combinedExperimentalFlow(serviceStatesStreams)
@@ -32,11 +32,9 @@ class GlobalServiceChanges(
             },
             1 // only prefetch one item to avoid processing stale consul states in case of backpressure
         ) { statesArray ->
-            @Suppress("UNCHECKED_CAST")
-            (statesArray.asSequence() as Sequence<MultiClusterState>)
+            (statesArray.asSequence() as Sequence<List<LocalityAwareServicesState>>)
                 .flatten()
                 .toList()
-                .toMultiClusterState()
         }
             .logSuppressedError("combineLatest() suppressed exception")
             .measureBuffer("global-service-changes-combine-latest", meterRegistry)
@@ -45,8 +43,8 @@ class GlobalServiceChanges(
     }
 
     private fun combinedExperimentalFlow(
-        serviceStatesStreams: List<Flux<MultiClusterState>>
-    ): Flux<MultiClusterState> {
+        serviceStatesStreams: List<Flux<List<LocalityAwareServicesState>>>
+    ): Flux<List<LocalityAwareServicesState>> {
 
         return Flux.combineLatest(
             serviceStatesStreams.map {
@@ -59,11 +57,9 @@ class GlobalServiceChanges(
                 it.publishOn(scheduler, 1).onBackpressureLatest()
             }
         ) { statesArray ->
-            @Suppress("UNCHECKED_CAST")
-            (statesArray.asSequence() as Sequence<MultiClusterState>)
+            (statesArray.asSequence() as Sequence<List<LocalityAwareServicesState>>)
                 .flatten()
                 .toList()
-                .toMultiClusterState()
         }
             .logSuppressedError("combineLatest() suppressed exception")
             .measureBuffer("global-service-changes-combine-latest", meterRegistry)

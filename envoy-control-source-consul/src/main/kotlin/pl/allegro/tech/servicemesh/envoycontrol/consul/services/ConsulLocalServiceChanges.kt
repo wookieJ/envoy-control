@@ -2,9 +2,7 @@ package pl.allegro.tech.servicemesh.envoycontrol.consul.services
 
 import pl.allegro.tech.servicemesh.envoycontrol.services.LocalServiceChanges
 import pl.allegro.tech.servicemesh.envoycontrol.services.Locality
-import pl.allegro.tech.servicemesh.envoycontrol.services.ClusterState
-import pl.allegro.tech.servicemesh.envoycontrol.services.MultiClusterState
-import pl.allegro.tech.servicemesh.envoycontrol.services.MultiClusterState.Companion.toMultiClusterState
+import pl.allegro.tech.servicemesh.envoycontrol.services.LocalityAwareServicesState
 import pl.allegro.tech.servicemesh.envoycontrol.services.ServicesState
 import pl.allegro.tech.servicemesh.envoycontrol.services.transformers.ServiceInstancesTransformer
 import reactor.core.publisher.Flux
@@ -17,7 +15,7 @@ class ConsulLocalServiceChanges(
     private val transformers: List<ServiceInstancesTransformer> = emptyList(),
     override val latestServiceState: AtomicReference<ServicesState> = AtomicReference(ServicesState())
 ) : LocalServiceChanges {
-    override fun stream(): Flux<MultiClusterState> =
+    override fun stream(): Flux<List<LocalityAwareServicesState>> =
         consulChanges
             .watchState()
             .map { state ->
@@ -30,7 +28,7 @@ class ConsulLocalServiceChanges(
             }
             .doOnNext { latestServiceState.set(it) }
             .map {
-                ClusterState(it, locality, localDc).toMultiClusterState()
+                listOf(LocalityAwareServicesState(it, locality, localDc))
             }
 
     override fun isServiceStateLoaded(): Boolean = latestServiceState.get() != ServicesState()
