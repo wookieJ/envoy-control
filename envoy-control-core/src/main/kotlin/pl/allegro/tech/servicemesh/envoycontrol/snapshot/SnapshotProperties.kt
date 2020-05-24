@@ -72,6 +72,7 @@ class TlsAuthenticationProperties {
     var validationContextSecretName: String = "validation_context"
     var tlsCertificateSecretName: String = "server_cert"
     var mtlsEnabledTag: String = "mtls:enabled"
+    var mtlsForceList: List<String> = listOf()
     var sanUriFormat: String = "spiffe://{service-name}"
 }
 

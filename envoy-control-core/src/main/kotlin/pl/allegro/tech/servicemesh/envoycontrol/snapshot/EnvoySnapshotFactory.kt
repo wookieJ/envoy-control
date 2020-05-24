@@ -131,12 +131,16 @@ internal class EnvoySnapshotFactory(
             it.instances
         }
         val http2EnabledTag = properties.egress.http2.tagName
-        val mtlsEnabledTag = properties.incomingPermissions.tlsAuthentication.mtlsEnabledTag
+        val tlsAuthentication = properties.incomingPermissions.tlsAuthentication
 
         // Http2 support is on a cluster level so if someone decides to deploy a service in dc1 with envoy and in dc2
         // without envoy then we can't set http2 because we do not know if the server in dc2 supports it.
         val http2Enabled = enableFeatureForClustersWithTag(allInstances, previousCluster?.http2Enabled, http2EnabledTag)
-        val mtlsEnabled = enableFeatureForClustersWithTag(allInstances, previousCluster?.mtlsEnabled, mtlsEnabledTag)
+        val mtlsEnabled = enableFeatureForClustersWithTag(
+                allInstances,
+                previousCluster?.mtlsEnabled,
+                tlsAuthentication.mtlsEnabledTag
+        ) || (serviceName in tlsAuthentication.mtlsForceList)
 
         return ClusterConfiguration(serviceName, http2Enabled, mtlsEnabled)
     }
