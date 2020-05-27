@@ -47,6 +47,10 @@ jobs:
             - v1-dependencies-{{ checksum "build.gradle" }}
             - v1-dependencies-
       - run:
+          # This is just for debugging purposes, you can omit this step
+          name: test splitting output
+          command: circleci tests glob “./**/*Test.kt | circleci tests split --split-by=timings | xargs -n 1 echo
+      - run:
           name: unit and integration tests
           command: ./gradlew check
       - run:
