@@ -4,6 +4,7 @@ import okhttp3.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import pl.allegro.tech.servicemesh.envoycontrol.config.Echo1EnvoyAuthConfig
 import pl.allegro.tech.servicemesh.envoycontrol.config.Echo2EnvoyAuthConfig
@@ -13,6 +14,7 @@ import pl.allegro.tech.servicemesh.envoycontrol.config.envoy.EnvoyContainer
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 
+@Disabled
 internal class TlsBasedAuthenticationTest : EnvoyControlTestConfiguration() {
 
     companion object {

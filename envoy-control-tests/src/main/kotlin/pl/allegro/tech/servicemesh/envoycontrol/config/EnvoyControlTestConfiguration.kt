@@ -64,7 +64,7 @@ abstract class EnvoyControlTestConfiguration : BaseEnvoyTest() {
         var envoys: Int = 1
 
         // We use envoy version from master. This is 1.14.0-dev.
-        const val defaultEnvoyImage = "envoyproxy/envoy-alpine-dev:5b1723ff54b1a51e104c514ee6363234aaa44366"
+        const val defaultEnvoyImage = "envoyproxy/envoy-alpine-dev:b7bef67c256090919a4585a1a06c42f15d640a09"
 
         @JvmStatic
         fun setup(

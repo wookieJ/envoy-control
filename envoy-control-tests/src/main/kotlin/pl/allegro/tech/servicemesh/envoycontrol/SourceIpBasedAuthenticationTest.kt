@@ -4,6 +4,7 @@ import okhttp3.Headers
 import okhttp3.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import pl.allegro.tech.servicemesh.envoycontrol.config.Echo1EnvoyAuthConfig
 import pl.allegro.tech.servicemesh.envoycontrol.config.Echo2EnvoyAuthConfig
@@ -34,6 +35,7 @@ internal class SourceIpBasedAuthenticationTest : EnvoyControlTestConfiguration()
     }
 
     @Test
+    @Disabled
     fun `should allow access to selected clients using source based authentication`() {
         registerEcho1WithEnvoy1OnIngress()
         registerEcho2WithEnvoy2OnIngress()

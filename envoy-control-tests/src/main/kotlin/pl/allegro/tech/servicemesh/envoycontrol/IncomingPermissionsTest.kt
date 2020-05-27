@@ -3,10 +3,12 @@ package pl.allegro.tech.servicemesh.envoycontrol
 import okhttp3.Headers
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import pl.allegro.tech.servicemesh.envoycontrol.config.EnvoyControlRunnerTestApp
 import pl.allegro.tech.servicemesh.envoycontrol.config.EnvoyControlTestConfiguration
 
+@Disabled
 internal class IncomingPermissionsTest : EnvoyControlTestConfiguration() {
 
     companion object {
